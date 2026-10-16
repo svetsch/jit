@@ -89,7 +89,7 @@ mvn package
 ### Native executable
 
 ```bash
-mvn -Pnative package
+mvn -Pnative verify
 ```
 
 Builds `target/native/output/Jit/` with `Jit.exe` (Windows; `Jit.app` on macOS, `bin/Jit` on Linux) and a
@@ -97,7 +97,7 @@ minimal bundled Java runtime, so no Java installation is needed on the target ma
 Build on the operating system you target, because the JavaFX native libraries are platform specific.
 
 ```bash
-mvn -Pnative,windows-installer package
+mvn -Pnative,windows-installer verify
 ```
 
 Builds an `.msi` installer instead (per-user install, Start menu and desktop shortcuts); add

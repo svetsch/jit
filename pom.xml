@@ -168,7 +168,7 @@
 
     <profiles>
         <!--
-            mvn -Pnative package
+            mvn -Pnative verify
             Builds a self-contained native application with jpackage: target/native/output/Jit/Jit.exe (Windows),
             Jit.app (macOS) or Jit/bin/Jit (Linux), bundling a minimal Java runtime, so no Java installation is
             needed. Build on the target operating system: JavaFX native libraries are platform specific.
@@ -184,7 +184,7 @@
                         <executions>
                             <execution>
                                 <id>clean-native</id>
-                                <phase>package</phase>
+                                <phase>verify</phase>
                                 <goals>
                                     <goal>clean</goal>
                                 </goals>
@@ -206,7 +206,7 @@
                         <executions>
                             <execution>
                                 <id>native-input</id>
-                                <phase>package</phase>
+                                <phase>verify</phase>
                                 <goals>
                                     <goal>copy-resources</goal>
                                 </goals>
@@ -230,8 +230,9 @@
                         <version>3.2.0</version>
                         <executions>
                             <execution>
+                                <!-- the native steps run in verify, after the shaded jar is built in package -->
                                 <id>jpackage</id>
-                                <phase>package</phase>
+                                <phase>verify</phase>
                                 <goals>
                                     <goal>exec</goal>
                                 </goals>
@@ -271,7 +272,7 @@
         </profile>
 
         <!--
-            mvn -Pnative,windows-installer package
+            mvn -Pnative,windows-installer verify
             Windows installer (per-user, Start menu and desktop shortcut). Needs the WiX Toolset 3.x on the PATH.
             Use -Djpackage.type=exe for a setup .exe instead of an .msi.
         -->
