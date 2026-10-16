@@ -46,6 +46,9 @@ public final class HistoryView extends VBox {
     private final Label searchInfo = Ui.label("", "dim-text");
     private final CommitDetailsView details;
     private boolean filtering;
+    private final HBox scopeBar = new HBox(8);
+    private final Label scopeText = Ui.label("", "scope-text");
+    private Runnable onShowAll = () -> { };
 
     public HistoryView(RepositoryView rv) {
         this.rv = rv;
@@ -73,11 +76,18 @@ public final class HistoryView extends VBox {
 
         buildTable();
 
+        javafx.scene.control.Button showAll = Ui.smallButton("Show All", Icons.EYE, () -> onShowAll.run());
+        scopeText.setMinWidth(0);
+        scopeBar.getChildren().addAll(Icons.icon(Icons.FILTER, 14, "accent"), scopeText, Ui.spacer(), showAll);
+        scopeBar.setAlignment(Pos.CENTER_LEFT);
+        scopeBar.getStyleClass().addAll("state-banner", "info-banner");
+        setScope(null);
+
         SplitPane split = new SplitPane(table, details);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.55);
         VBox.setVgrow(split, Priority.ALWAYS);
-        getChildren().addAll(searchBar, split);
+        getChildren().addAll(searchBar, scopeBar, split);
     }
 
     private void buildTable() {
@@ -146,6 +156,18 @@ public final class HistoryView extends VBox {
                 details.show(n);
             }
         });
+    }
+
+    public void setOnShowAll(Runnable onShowAll) {
+        this.onShowAll = onShowAll;
+    }
+
+    /** Shows which branches the history is limited to; {@code null} hides the bar. */
+    public void setScope(String text) {
+        boolean show = text != null;
+        scopeText.setText(show ? text : "");
+        scopeBar.setVisible(show);
+        scopeBar.setManaged(show);
     }
 
     public void focusSearch() {

@@ -1039,3 +1039,37 @@
 .rebase-list .list-cell.rebase-squash {
     -fx-padding: 4 8 4 28;
 }
+
+/* ---------------------------------------------------------------- branch quick actions */
+
+.row-action {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-padding: 2 3 2 3;
+}
+
+.row-action:hover {
+    -fx-background-color: -jit-hover-strong;
+}
+
+.hidden-branch .sidebar-text {
+    -fx-text-fill: -jit-text-dim;
+    -fx-strikethrough: true;
+}
+
+.scope-text {
+    -fx-text-fill: -jit-text;
+}
+
+/* ---------------------------------------------------------------- toolbar count badges */
+
+.tool-badge {
+    -fx-background-color: -jit-accent;
+    -fx-background-radius: 8;
+    -fx-text-fill: white;
+    -fx-font-size: 9.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 4 0 4;
+    -fx-min-height: 15;
+    -fx-alignment: center;
+}

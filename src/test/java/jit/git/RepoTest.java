@@ -68,6 +68,14 @@ class RepoTest {
     }
 
     @Test
+    void testsCannotReachTheNetwork() throws Exception {
+        // the Surefire configuration sets GIT_ALLOW_PROTOCOL=file: git refuses before connecting anywhere
+        Git.Result r = repo.git().run(null, null, List.of("ls-remote", "https://github.com/git/git.git"));
+        assertFalse(r.ok());
+        assertTrue(r.err().contains("not allowed"), r.err());
+    }
+
+    @Test
     void emptyRepositoryHasNoHistory() throws Exception {
         assertTrue(repo.log(100).isEmpty());
         assertNull(repo.headHash());
@@ -344,6 +352,79 @@ class RepoTest {
 
     private static void assertArrayEqualsBytes(byte[] expected, byte[] actual) {
         org.junit.jupiter.api.Assertions.assertArrayEquals(expected, actual);
+    }
+
+    @Test
+    void historyCanBeFilteredToBranchesOrHideBranches() throws Exception {
+        write("f.txt", "base\n");
+        commitAll("base");
+        String main = repo.headBranch();
+        repo.createBranch("side", "HEAD", true);
+        write("s.txt", "side\n");
+        commitAll("side work");
+        repo.checkout(main);
+        write("m.txt", "main\n");
+        commitAll("main work");
+
+        assertEquals(java.util.Set.of("main work", "side work", "base"), java.util.Set.copyOf(subjects(repo.log(10))));
+        assertEquals(List.of("side work", "base"), subjects(repo.log(10, List.of("refs/heads/side"), List.of())));
+        assertEquals(List.of("main work", "base"), subjects(repo.log(10, List.of(), List.of("refs/heads/side"))));
+        // hiding the checked-out branch keeps it visible through HEAD
+        assertTrue(subjects(repo.log(10, List.of(), List.of("refs/heads/" + main))).contains("main work"));
+    }
+
+    private static List<String> subjects(List<Commit> commits) {
+        return commits.stream().map(c -> c.subject).toList();
+    }
+
+    @Test
+    void commitPatchesRoundTripThroughGitAm() throws Exception {
+        write("f.txt", "one\n");
+        commitAll("base");
+        String base = repo.headHash();
+        write("f.txt", "one\ntwo\n");
+        commitAll("second");
+        write("g.txt", "new\n");
+        commitAll("third");
+        Path patch = dir.resolve("../series.patch").normalize();
+        Files.writeString(patch, repo.formatPatches(base), StandardCharsets.UTF_8);
+        assertTrue(Repo.isMailbox(patch));
+        assertTrue(repo.patchStat(patch).contains("g.txt"));
+
+        repo.reset(base, Repo.ResetMode.HARD);
+        assertNull(repo.checkPatch(patch, Repo.PatchMode.COMMIT));
+        repo.applyPatchFile(patch, Repo.PatchMode.COMMIT, true);
+        assertEquals(List.of("third", "second", "base"), subjects(repo.log(10)));
+        assertEquals("Test User", repo.log(1).get(0).author);
+
+        // conflicting mailbox: git am stops, the state is detected and abort restores everything
+        repo.reset(base, Repo.ResetMode.HARD);
+        write("f.txt", "conflicting\n");
+        commitAll("other");
+        String before = repo.headHash();
+        assertThrows(GitException.class, () -> repo.applyPatchFile(patch, Repo.PatchMode.COMMIT, false));
+        assertEquals(Repo.State.APPLYING_PATCHES, repo.state());
+        repo.continueOrAbort(Repo.State.APPLYING_PATCHES, true);
+        assertEquals(Repo.State.NONE, repo.state());
+        assertEquals(before, repo.headHash());
+    }
+
+    @Test
+    void workingTreePatchIncludesNewFilesAndAppliesToIndex() throws Exception {
+        write("f.txt", "one\n");
+        commitAll("base");
+        write("f.txt", "one\nchanged\n");
+        write("new.txt", "brand new\n");
+        Path patch = dir.resolve("../changes.patch").normalize();
+        Files.writeString(patch, repo.workingPatch(repo.status(), false), StandardCharsets.UTF_8);
+        assertFalse(Repo.isMailbox(patch));
+
+        repo.discard(repo.status());
+        assertTrue(repo.status().isEmpty());
+        repo.applyPatchFile(patch, Repo.PatchMode.STAGE, false);
+        assertEquals("one\nchanged\n", indexContent("f.txt"));
+        assertEquals("brand new\n", read("new.txt"));
+        assertTrue(repo.status().stream().allMatch(StatusEntry::hasStaged));
     }
 
     @Test

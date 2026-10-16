@@ -120,6 +120,19 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
+                <configuration>
+                    <!-- tests stay offline and isolated: git may only use local paths, and neither the user's
+                         global/system git configuration nor the registry settings are read or written -->
+                    <environmentVariables>
+                        <GIT_ALLOW_PROTOCOL>file</GIT_ALLOW_PROTOCOL>
+                        <GIT_CONFIG_NOSYSTEM>1</GIT_CONFIG_NOSYSTEM>
+                        <GIT_CONFIG_GLOBAL>${project.build.directory}/test-gitconfig</GIT_CONFIG_GLOBAL>
+                        <GIT_TERMINAL_PROMPT>0</GIT_TERMINAL_PROMPT>
+                    </environmentVariables>
+                    <systemPropertyVariables>
+                        <jit.settings>${project.build.directory}/test-settings.properties</jit.settings>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.openjfx</groupId>

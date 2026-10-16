@@ -2,20 +2,23 @@ package jit.ui;
 
 import java.util.List;
 
+import javafx.beans.property.BooleanProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import jit.git.Commit;
@@ -25,7 +28,9 @@ import jit.git.FileChange;
 public final class CommitDetailsView extends SplitPane {
     private final RepositoryView rv;
     private final VBox info = new VBox(10);
-    private final ListView<FileChange> files = new ListView<>();
+    private final FileTree<FileChange> files = new FileTree<>(FileChange::path, FileChange::status,
+            FileChange::oldPath, "No changed files");
+    private final BooleanProperty treeMode = FileTree.treeModeSetting("commitFiles.tree");
     private final Label filesHeader = Ui.label("Changes", "pane-header-text");
     private final DiffView diff = new DiffView();
     private Commit commit;
@@ -40,14 +45,36 @@ public final class CommitDetailsView extends SplitPane {
         infoScroll.setFitToWidth(true);
         infoScroll.getStyleClass().add("plain-scroll");
 
-        files.getStyleClass().add("file-list");
-        files.setCellFactory(l -> new FileCell());
-        files.getSelectionModel().selectedItemProperty().addListener((obs, o, n) -> loadDiff(n));
-        files.setPlaceholder(Ui.label("", "placeholder-text"));
-        HBox header = new HBox(filesHeader);
+        files.setTreeMode(treeMode.get());
+        treeMode.addListener((obs, o, n) -> files.setTreeMode(n));
+        files.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<Object>) c -> loadDiff(files.singleEntry()));
+        files.setOnContextMenuRequested(e -> {
+            Commit c = commit;
+            FileChange f = files.singleEntry();
+            ContextMenu menu = f != null && c != null
+                    ? rv.fileMenu(f.path(), c.hash, () -> rv.externalDiff(c, f)) : new ContextMenu();
+            menu.getItems().addAll(new SeparatorMenuItem(),
+                    Ui.item(treeMode.get() ? "Show as Flat List" : "Show as Folder Tree",
+                            treeMode.get() ? Icons.LIST : Icons.FOLDER, () -> treeMode.set(!treeMode.get())));
+            menu.show(files, e.getScreenX(), e.getScreenY());
+            e.consume();
+        });
+        // double-click on a file opens it in the external diff tool (on a folder it just expands)
+        files.addEventFilter(MouseEvent.MOUSE_CLICKED, e -> {
+            FileChange f = files.singleEntry();
+            if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2 && f != null && commit != null
+                    && e.getTarget() instanceof javafx.scene.Node n && insideFilledCell(n)) {
+                rv.externalDiff(commit, f);
+            }
+        });
+        filesHeader.setMinWidth(0);
+        HBox header = new HBox(8, filesHeader, Ui.spacer(), FileTree.layoutToggle(treeMode));
+        header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("pane-header");
-        VBox filesBox = new VBox(header, files);
-        VBox.setVgrow(files, Priority.ALWAYS);
+        StackPane body = new StackPane(files, files.placeholder());
+        VBox filesBox = new VBox(header, body);
+        VBox.setVgrow(body, Priority.ALWAYS);
 
         SplitPane left = new SplitPane(infoScroll, filesBox);
         left.setOrientation(Orientation.VERTICAL);
@@ -66,7 +93,7 @@ public final class CommitDetailsView extends SplitPane {
         commit = null;
         token++;
         info.getChildren().setAll(Ui.label("No commit selected", "placeholder-text"));
-        files.getItems().clear();
+        files.setEntries(List.of());
         filesHeader.setText("Changes");
         diff.clear("Select a file to see its changes");
     }
@@ -82,9 +109,8 @@ public final class CommitDetailsView extends SplitPane {
         commit = c;
         long t = ++token;
         buildInfo(c, c.subject);
-        files.getItems().clear();
+        // the previous files stay until the new ones arrive, so the selected path can carry over
         filesHeader.setText("Changes");
-        diff.clear("Select a file to see its changes");
         rv.read(() -> rv.repo().commitMessage(c.hash), msg -> {
             if (t == token) {
                 buildInfo(c, msg);
@@ -92,11 +118,12 @@ public final class CommitDetailsView extends SplitPane {
         });
         rv.read(() -> rv.repo().commitChanges(c), changes -> {
             if (t == token) {
-                files.getItems().setAll(changes);
+                files.setEntries(changes);
                 filesHeader.setText(changes.size() + (changes.size() == 1 ? " changed file" : " changed files"));
-                if (!changes.isEmpty()) {
-                    files.getSelectionModel().select(0);
+                if (files.singleEntry() == null) {
+                    files.selectFirstFile();
                 }
+                loadDiff(files.singleEntry());
             }
         });
     }
@@ -174,41 +201,19 @@ public final class CommitDetailsView extends SplitPane {
         }
         long t = token;
         rv.read(() -> rv.repo().commitDiff(c, f), text -> {
-            if (t == token && f.equals(files.getSelectionModel().getSelectedItem())) {
+            if (t == token && f.equals(files.singleEntry())) {
                 diff.setDiff(f.path(), text, DiffView.Mode.READ_ONLY);
                 diff.setExternalDiff(() -> rv.externalDiff(c, f));
             }
         });
     }
 
-    private final class FileCell extends ListCell<FileChange> {
-        FileCell() {
-            setPrefWidth(0);
-            setOnContextMenuRequested(e -> {
-                Commit c = commit;
-                FileChange f = getItem();
-                if (f != null && c != null) {
-                    rv.fileMenu(f.path(), c.hash, () -> rv.externalDiff(c, f))
-                            .show(this, e.getScreenX(), e.getScreenY());
-                    e.consume();
-                }
-            });
-            setOnMouseClicked(e -> {
-                if (e.getClickCount() == 2 && getItem() != null && commit != null) {
-                    rv.externalDiff(commit, getItem());
-                }
-            });
+    private static boolean insideFilledCell(javafx.scene.Node n) {
+        for (javafx.scene.Node p = n; p != null; p = p.getParent()) {
+            if (p instanceof javafx.scene.control.TreeCell<?> cell) {
+                return !cell.isEmpty();
+            }
         }
-
-        @Override
-        protected void updateItem(FileChange item, boolean empty) {
-            super.updateItem(item, empty);
-            setText(null);
-            setGraphic(empty || item == null ? null : Ui.fileRow(item.status(), item.path(), item.oldPath()));
-        }
-    }
-
-    List<FileChange> files() {
-        return files.getItems();
+        return false;
     }
 }

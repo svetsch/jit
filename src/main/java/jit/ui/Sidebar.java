@@ -6,11 +6,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
@@ -21,6 +23,7 @@ import javafx.scene.control.TreeView;
 import javafx.scene.input.MouseButton;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import jit.git.Ref;
@@ -59,6 +62,14 @@ public final class Sidebar extends VBox {
     private final Map<String, Boolean> expanded = new HashMap<>();
     private boolean updating;
 
+    /** Per-branch quick actions shown on the right of branch rows. */
+    public enum BranchAction { PIN, FILTER, HIDE }
+
+    private BiConsumer<BranchAction, Ref> onBranchAction = (a, r) -> { };
+    private Set<String> pinned = Set.of();
+    private Set<String> filtered = Set.of();
+    private Set<String> hidden = Set.of();
+
     private Consumer<Item> onSelect = i -> { };
     private Consumer<Item> onOpen = i -> { };
     private Function<Item, ContextMenu> menus = i -> null;
@@ -89,6 +100,7 @@ public final class Sidebar extends VBox {
         filterBox.getStyleClass().add("sidebar-filter-box");
 
         getChildren().addAll(tree, filterBox);
+        expanded.put("sec:pinned", true);
         expanded.put("sec:branches", true);
         expanded.put("sec:remotes", true);
         expanded.put("sec:tags", false);
@@ -105,6 +117,22 @@ public final class Sidebar extends VBox {
 
     public void setMenus(Function<Item, ContextMenu> menus) {
         this.menus = menus;
+    }
+
+    public void setOnBranchAction(BiConsumer<BranchAction, Ref> onBranchAction) {
+        this.onBranchAction = onBranchAction;
+    }
+
+    /** Full ref names that are pinned, filtered (history shows only these) or hidden from the history. */
+    public void setBranchStates(Set<String> pinned, Set<String> filtered, Set<String> hidden) {
+        this.pinned = Set.copyOf(pinned);
+        this.filtered = Set.copyOf(filtered);
+        this.hidden = Set.copyOf(hidden);
+    }
+
+    /** Rebuilds the tree, e.g. after the branch states changed. */
+    public void rebuildTree() {
+        rebuild();
     }
 
     public void focusFilter() {
@@ -154,10 +182,27 @@ public final class Sidebar extends VBox {
         root.getChildren().add(new TreeItem<>(lc));
         root.getChildren().add(new TreeItem<>(new Item(Kind.ALL_COMMITS, "all-commits", "All Commits")));
 
+        // Pinned: local and remote branches the user pinned, shown only here
+        TreeItem<Item> pinnedSection = section("pinned", "Pinned");
+        for (Ref r : refs) {
+            if (r.kind != Ref.Kind.TAG && pinned.contains(r.fullName) && matches(r.name, f)) {
+                Item it = new Item(r.kind == Ref.Kind.LOCAL ? Kind.BRANCH : Kind.REMOTE_BRANCH,
+                        "ref:" + r.fullName, r.name);
+                it.ref = r;
+                it.remote = r.kind == Ref.Kind.REMOTE ? r.remote() : null;
+                it.tooltip = r.name + (r.upstream != null ? "  →  " + r.upstream : "");
+                pinnedSection.getChildren().add(new TreeItem<>(it));
+            }
+        }
+        if (!pinnedSection.getChildren().isEmpty()) {
+            pinnedSection.getValue().count = pinnedSection.getChildren().size();
+            addSection(root, pinnedSection, filtering);
+        }
+
         // Branches
         TreeItem<Item> branches = section("branches", "Branches");
         for (Ref r : refs) {
-            if (r.kind == Ref.Kind.LOCAL && matches(r.name, f)) {
+            if (r.kind == Ref.Kind.LOCAL && !pinned.contains(r.fullName) && matches(r.name, f)) {
                 Item it = new Item(Kind.BRANCH, "ref:" + r.fullName, leaf(r.name));
                 it.ref = r;
                 it.tooltip = r.name + (r.upstream != null ? "  →  " + r.upstream : "");
@@ -180,7 +225,8 @@ public final class Sidebar extends VBox {
             ri.tooltip = remotes.getOrDefault(remote, "");
             TreeItem<Item> remoteItem = treeItem(ri, true, filtering);
             for (Ref r : refs) {
-                if (r.kind == Ref.Kind.REMOTE && r.remote().equals(remote) && matches(r.name, f)) {
+                if (r.kind == Ref.Kind.REMOTE && r.remote().equals(remote) && !pinned.contains(r.fullName)
+                        && matches(r.name, f)) {
                     Item it = new Item(Kind.REMOTE_BRANCH, "ref:" + r.fullName, leaf(r.remoteBranch()));
                     it.ref = r;
                     it.remote = remote;
@@ -339,8 +385,50 @@ public final class Sidebar extends VBox {
     }
 
     private final class ItemCell extends TreeCell<Item> {
+        private final Button pinButton = actionButton();
+        private final Button filterButton = actionButton();
+        private final Button hideButton = actionButton();
+        private final HBox actions = new HBox(1, pinButton, filterButton, hideButton);
+
+        private Button actionButton() {
+            Button b = new Button();
+            b.getStyleClass().add("row-action");
+            b.setFocusTraversable(false);
+            b.setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+            return b;
+        }
+
+        /** Shows all actions on hover / selection, otherwise only the ones that are switched on. */
+        private void updateActions() {
+            Item it = getItem();
+            boolean branch = it != null && (it.kind == Kind.BRANCH || it.kind == Kind.REMOTE_BRANCH);
+            boolean all = branch && (isHover() || isSelected());
+            boolean anyVisible = false;
+            for (Button b : List.of(pinButton, filterButton, hideButton)) {
+                boolean show = branch && (all || b.getStyleClass().contains("active"));
+                b.setVisible(show);
+                b.setManaged(show);
+                anyVisible |= show;
+            }
+            actions.setVisible(anyVisible);
+            actions.setManaged(anyVisible);
+        }
+
+        private void configure(Button b, String icon, boolean active, String tooltip, BranchAction action, Ref ref) {
+            b.setGraphic(Icons.icon(icon, 13, active ? "accent" : null));
+            b.getStyleClass().remove("active");
+            if (active) {
+                b.getStyleClass().add("active");
+            }
+            b.setTooltip(new Tooltip(tooltip));
+            b.setOnAction(e -> onBranchAction.accept(action, ref));
+        }
+
         ItemCell() {
             setPrefWidth(0);
+            actions.setAlignment(Pos.CENTER_RIGHT);
+            hoverProperty().addListener((obs, o, n) -> updateActions());
+            selectedProperty().addListener((obs, o, n) -> updateActions());
             setOnMouseClicked(e -> {
                 if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2 && getItem() != null) {
                     onOpen.accept(getItem());
@@ -362,7 +450,7 @@ public final class Sidebar extends VBox {
         @Override
         protected void updateItem(Item item, boolean empty) {
             super.updateItem(item, empty);
-            getStyleClass().removeAll("section-cell", "head-cell");
+            getStyleClass().removeAll("section-cell", "head-cell", "hidden-branch");
             setText(null);
             setTooltip(null);
             if (empty || item == null) {
@@ -420,10 +508,31 @@ public final class Sidebar extends VBox {
                 default -> {
                 }
             }
+            if (item.kind == Kind.BRANCH || item.kind == Kind.REMOTE_BRANCH) {
+                Ref r = item.ref;
+                boolean isPinned = pinned.contains(r.fullName);
+                boolean isFiltered = filtered.contains(r.fullName);
+                boolean isHidden = hidden.contains(r.fullName);
+                configure(pinButton, Icons.PIN, isPinned, isPinned ? "Unpin" : "Pin to the top", BranchAction.PIN, r);
+                configure(filterButton, Icons.FILTER, isFiltered,
+                        isFiltered ? "Remove from the history filter"
+                                : "Show only this branch in the history (add more branches to combine)",
+                        BranchAction.FILTER, r);
+                configure(hideButton, isHidden ? Icons.EYE_OFF : Icons.EYE, isHidden,
+                        isHidden ? "Show this branch in the history"
+                                : r.head ? "Hide in the history (the checked-out branch always stays visible)"
+                                : "Hide this branch in the history",
+                        BranchAction.HIDE, r);
+                if (isHidden) {
+                    getStyleClass().add("hidden-branch");
+                }
+                box.getChildren().add(actions);
+            }
             if (item.tooltip != null && !item.tooltip.isEmpty()) {
                 setTooltip(new Tooltip(item.tooltip));
             }
             setGraphic(box);
+            updateActions();
         }
     }
 }

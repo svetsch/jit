@@ -91,6 +91,27 @@ public final class Ui {
         return b;
     }
 
+    /** Toolbar button whose icon carries a small count badge (hidden while the count is 0). */
+    public static Button toolButton(String text, String icon, String tooltip, Runnable action, Label badge) {
+        Button b = toolButton(text, icon, tooltip, action);
+        badge.getStyleClass().add("tool-badge");
+        badge.setMinWidth(Region.USE_PREF_SIZE);
+        badge.setVisible(false);
+        badge.setMouseTransparent(true);
+        StackPane graphic = new StackPane(Icons.icon(icon, 20), badge);
+        StackPane.setAlignment(badge, Pos.TOP_RIGHT);
+        badge.setTranslateX(10);
+        badge.setTranslateY(-5);
+        b.setGraphic(graphic);
+        return b;
+    }
+
+    /** Shows {@code count} on a badge created for {@link #toolButton(String, String, String, Runnable, Label)}. */
+    public static void setBadge(Label badge, int count) {
+        badge.setVisible(count > 0);
+        badge.setText(count > 999 ? "999+" : Integer.toString(count));
+    }
+
     public static Button smallButton(String text, String icon, Runnable action) {
         Button b = new Button(text);
         if (icon != null) {

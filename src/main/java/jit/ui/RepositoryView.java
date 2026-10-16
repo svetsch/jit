@@ -7,6 +7,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -88,6 +91,12 @@ public final class RepositoryView extends BorderPane {
     private String undoTarget;
     private final Label repoLabel = Ui.label("", "repo-name");
     private final MenuButton branchButton = new MenuButton();
+    private final Label behindBadge = new Label();
+    private final Label aheadBadge = new Label();
+    private final Button pullButton = Ui.toolButton("Pull", Icons.PULL, "Pull the current branch (Ctrl+Shift+L)",
+            this::pull, behindBadge);
+    private final Button pushButton = Ui.toolButton("Push", Icons.PUSH, "Push a branch (Ctrl+Shift+P)",
+            this::push, aheadBadge);
     private final MenuButton hostingButton = toolMenu("Remote", Icons.CLOUD, "Open the remote repository in the browser");
     private final MenuButton commandsButton = toolMenu("Commands", Icons.LIST, "Custom commands");
 
@@ -107,6 +116,10 @@ public final class RepositoryView extends BorderPane {
     private Repo.State state = Repo.State.NONE;
     private String logSignature;
     private boolean loadedOnce;
+    /** Full ref names pinned in the sidebar, shown exclusively, or hidden in the history (saved per repository). */
+    private final Set<String> pinnedRefs = new LinkedHashSet<>();
+    private final Set<String> filterRefs = new LinkedHashSet<>();
+    private final Set<String> hiddenRefs = new LinkedHashSet<>();
 
     public RepositoryView(Repo repo) {
         this.repo = repo;
@@ -120,6 +133,9 @@ public final class RepositoryView extends BorderPane {
         sidebar.setOnSelect(this::onSidebarSelect);
         sidebar.setOnOpen(this::onSidebarOpen);
         sidebar.setMenus(this::sidebarMenu);
+        sidebar.setOnBranchAction(this::onBranchAction);
+        loadBranchStates();
+        history.setOnShowAll(this::showAllBranches);
 
         content.getChildren().addAll(history, changes, stashDetails);
         buildBanner();
@@ -157,8 +173,8 @@ public final class RepositoryView extends BorderPane {
                 repoBox,
                 sep(),
                 Ui.toolButton("Fetch", Icons.FETCH, "Fetch from remotes (Ctrl+Shift+F)", this::fetch),
-                Ui.toolButton("Pull", Icons.PULL, "Pull the current branch (Ctrl+Shift+L)", this::pull),
-                Ui.toolButton("Push", Icons.PUSH, "Push a branch (Ctrl+Shift+P)", this::push),
+                pullButton,
+                pushButton,
                 sep(),
                 Ui.toolButton("Stash", Icons.STASH, "Stash local changes (Ctrl+Shift+S)", this::stash),
                 Ui.toolButton("Pop", Icons.POP, "Pop the latest stash", this::popLatestStash),
@@ -238,7 +254,8 @@ public final class RepositoryView extends BorderPane {
         Button skip = Ui.smallButton("Skip Commit", null, () -> run("Skip commit", p -> repo.skipRebaseCommit()));
         Button abort = Ui.smallButton("Abort", Icons.CLOSE, () -> continueOrAbort(true));
         abort.getStyleClass().add("danger");
-        skip.visibleProperty().bind(bannerText.textProperty().map(t -> t.startsWith("Rebase")));
+        skip.visibleProperty().bind(bannerText.textProperty().map(t -> t.startsWith("Rebase")
+                || t.startsWith("Applying")));
         skip.managedProperty().bind(skip.visibleProperty());
         banner.getChildren().addAll(Icons.icon(Icons.WARNING, 16, "warning"), bannerText, Ui.spacer(), cont, skip, abort);
         banner.setAlignment(Pos.CENTER_LEFT);
@@ -520,6 +537,250 @@ public final class RepositoryView extends BorderPane {
                         run("Interactive rebase", p -> repo.interactiveRebase(from, plan.steps(), plan.autostash()),
                                 () -> showUndoBar("Rebase of '" + branch + "' completed.", startHead)));
         }, "Interactive rebase");
+    }
+
+    /** Commits behind / ahead of the upstream of the current branch, on the Pull and Push buttons. */
+    private void updateTrackingBadges() {
+        Ref head = headBranch == null ? null : localRef(headBranch);
+        int behind = head == null ? 0 : head.behind;
+        int ahead = head == null ? 0 : head.ahead;
+        Ui.setBadge(behindBadge, behind);
+        Ui.setBadge(aheadBadge, ahead);
+        String upstream = head == null || head.upstream == null ? null : head.upstream;
+        pullButton.setTooltip(new javafx.scene.control.Tooltip(upstream == null
+                ? "Pull the current branch (Ctrl+Shift+L)"
+                : behind == 0 ? "Up to date with " + upstream + " (as of the last fetch)"
+                : behind + (behind == 1 ? " commit" : " commits") + " to pull from " + upstream));
+        pushButton.setTooltip(new javafx.scene.control.Tooltip(upstream == null
+                ? (head == null ? "Push a branch (Ctrl+Shift+P)" : "'" + headBranch + "' has no upstream yet — push to publish it")
+                : ahead == 0 ? "Nothing to push to " + upstream
+                : ahead + (ahead == 1 ? " commit" : " commits") + " to push to " + upstream));
+    }
+
+    // ------------------------------------------------------------------ pinned / filtered / hidden branches
+
+    private String stateKey(String what) {
+        return "repo." + Integer.toHexString(repo.root().toString().toLowerCase().hashCode()) + "." + what;
+    }
+
+    private void loadBranchStates() {
+        for (var e : Map.of("pinned", pinnedRefs, "filter", filterRefs, "hidden", hiddenRefs).entrySet()) {
+            for (String ref : Settings.get(stateKey(e.getKey()), "").split("\n")) {
+                if (!ref.isBlank()) {
+                    e.getValue().add(ref);
+                }
+            }
+        }
+    }
+
+    private void saveBranchStates() {
+        Settings.put(stateKey("pinned"), String.join("\n", pinnedRefs));
+        Settings.put(stateKey("filter"), String.join("\n", filterRefs));
+        Settings.put(stateKey("hidden"), String.join("\n", hiddenRefs));
+    }
+
+    private static void toggle(Set<String> set, String value) {
+        if (!set.remove(value)) {
+            set.add(value);
+        }
+    }
+
+    private void onBranchAction(Sidebar.BranchAction action, Ref ref) {
+        switch (action) {
+            case PIN -> toggle(pinnedRefs, ref.fullName);
+            case FILTER -> {
+                toggle(filterRefs, ref.fullName);
+                hiddenRefs.remove(ref.fullName);
+            }
+            case HIDE -> {
+                toggle(hiddenRefs, ref.fullName);
+                filterRefs.remove(ref.fullName);
+            }
+        }
+        saveBranchStates();
+        sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
+        sidebar.rebuildTree();
+        if (action != Sidebar.BranchAction.PIN) {
+            updateScope();
+            refresh(true);
+        }
+    }
+
+    /** Clears the branch filter and shows hidden branches again. */
+    public void showAllBranches() {
+        filterRefs.clear();
+        hiddenRefs.clear();
+        saveBranchStates();
+        sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
+        sidebar.rebuildTree();
+        updateScope();
+        refresh(true);
+    }
+
+    private void updateScope() {
+        Set<String> existing = new HashSet<>();
+        Map<String, String> names = new HashMap<>();
+        for (Ref r : refs) {
+            existing.add(r.fullName);
+            names.put(r.fullName, r.name);
+        }
+        List<String> only = filterRefs.stream().filter(existing::contains).map(names::get).toList();
+        List<String> hide = hiddenRefs.stream().filter(existing::contains).map(names::get).toList();
+        if (!only.isEmpty()) {
+            history.setScope("Showing only " + String.join(", ", only));
+        } else if (!hide.isEmpty()) {
+            history.setScope(hide.size() + (hide.size() == 1 ? " branch hidden: " : " branches hidden: ")
+                    + String.join(", ", hide));
+        } else {
+            history.setScope(null);
+        }
+    }
+
+    private List<MenuItem> branchStateItems(Ref r) {
+        boolean pin = pinnedRefs.contains(r.fullName);
+        boolean only = filterRefs.contains(r.fullName);
+        boolean hide = hiddenRefs.contains(r.fullName);
+        return List.of(new SeparatorMenuItem(),
+                Ui.item(pin ? "Unpin" : "Pin to Top", Icons.PIN, () -> onBranchAction(Sidebar.BranchAction.PIN, r)),
+                Ui.item(only ? "Remove from History Filter" : "Show Only This Branch", Icons.FILTER,
+                        () -> onBranchAction(Sidebar.BranchAction.FILTER, r)),
+                Ui.item(hide ? "Show in History" : "Hide in History", hide ? Icons.EYE : Icons.EYE_OFF,
+                        () -> onBranchAction(Sidebar.BranchAction.HIDE, r)));
+    }
+
+    // ------------------------------------------------------------------ patches
+
+    private static String slug(String text) {
+        String s = text.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+        return s.length() > 50 ? s.substring(0, 50) : s;
+    }
+
+    private Path chooseSaveFile(String title, String name) {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(title);
+        chooser.setInitialFileName(name);
+        chooser.getExtensionFilters().addAll(
+                new javafx.stage.FileChooser.ExtensionFilter("Patch files", "*.patch", "*.diff"),
+                new javafx.stage.FileChooser.ExtensionFilter("All files", "*.*"));
+        java.io.File dir = new java.io.File(Settings.get("patchDir", repo.root().toString()));
+        chooser.setInitialDirectory(dir.isDirectory() ? dir : repo.root().toFile());
+        java.io.File f = chooser.showSaveDialog(window());
+        if (f == null) {
+            return null;
+        }
+        Settings.put("patchDir", f.getParent());
+        return f.toPath();
+    }
+
+    private void writePatch(String title, Path target, Callable<String> patch) {
+        run(title, p -> {
+            String text = patch.call();
+            if (text.isBlank()) {
+                throw new IOException("There are no changes to save.");
+            }
+            Files.writeString(target, text, StandardCharsets.UTF_8);
+        }, () -> status("Saved " + target));
+    }
+
+    /** Saves one commit as an email-style patch (git format-patch). */
+    public void saveCommitPatch(Commit c) {
+        Path target = chooseSaveFile("Save Commit as Patch", c.shortHash() + "-" + slug(c.subject) + ".patch");
+        if (target != null) {
+            writePatch("Save patch", target, () -> repo.formatPatch(c.hash));
+        }
+    }
+
+    /** Saves every commit after {@code base} up to HEAD into one mailbox file. */
+    public void savePatchesAfter(Commit base) {
+        Path target = chooseSaveFile("Save Patches", repo.name() + "-since-" + base.shortHash() + ".patch");
+        if (target != null) {
+            writePatch("Save patches", target, () -> repo.formatPatches(base.hash));
+        }
+    }
+
+    /** Saves selected local changes (staged or unstaged side) as a diff. */
+    public void saveWorkingPatch(List<StatusEntry> entries, boolean staged) {
+        List<StatusEntry> copy = List.copyOf(entries);
+        Path target = chooseSaveFile("Save Changes as Patch",
+                repo.name() + (staged ? "-staged" : "-changes") + ".patch");
+        if (target != null) {
+            writePatch("Save patch", target, () -> repo.workingPatch(copy, staged));
+        }
+    }
+
+    /** Saves all local changes (staged and unstaged, including new files) as one diff against HEAD. */
+    public void saveAllLocalChanges() {
+        if (status.isEmpty()) {
+            Dialogs.info(window(), "Save as Patch", "There are no local changes.");
+            return;
+        }
+        List<StatusEntry> all = List.copyOf(status);
+        Path target = chooseSaveFile("Save Local Changes as Patch", repo.name() + "-changes.patch");
+        if (target != null) {
+            writePatch("Save patch", target, () -> {
+                // staged + unstaged combined: diff HEAD against the working tree, plus untracked files
+                List<StatusEntry> untracked = all.stream().filter(StatusEntry::isUntracked).toList();
+                String tracked = headHash == null ? "" : repo.git().exec("diff", "--binary", "--no-ext-diff",
+                        "--src-prefix=a/", "--dst-prefix=b/", "-M", "HEAD");
+                return tracked + (untracked.isEmpty() ? "" : repo.workingPatch(untracked, false));
+            });
+        }
+    }
+
+    /** Asks for a patch file and applies it. */
+    public void applyPatch() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Apply Patch");
+        chooser.getExtensionFilters().addAll(
+                new javafx.stage.FileChooser.ExtensionFilter("Patch files", "*.patch", "*.diff", "*.eml", "*.mbox"),
+                new javafx.stage.FileChooser.ExtensionFilter("All files", "*.*"));
+        java.io.File dir = new java.io.File(Settings.get("patchDir", repo.root().toString()));
+        chooser.setInitialDirectory(dir.isDirectory() ? dir : repo.root().toFile());
+        java.io.File f = chooser.showOpenDialog(window());
+        if (f != null) {
+            Settings.put("patchDir", f.getParent());
+            applyPatch(f.toPath());
+        }
+    }
+
+    /** Shows what a patch changes and applies it to the working tree, the index, or as commits. */
+    public void applyPatch(Path patch) {
+        if (state != Repo.State.NONE) {
+            Dialogs.error(window(), "Apply Patch", state.label + ". Finish or abort it first.");
+            return;
+        }
+        boolean mailbox = Repo.isMailbox(patch);
+        read(() -> repo.patchStat(patch), stat -> {
+            Dialogs.Form f = new Dialogs.Form();
+            f.add("Patch", Ui.label(patch.getFileName().toString(), "form-value"));
+            javafx.scene.control.TextArea summary = new javafx.scene.control.TextArea(stat.strip());
+            summary.setEditable(false);
+            summary.setPrefRowCount(Math.min(10, Math.max(3, (int) stat.lines().count())));
+            summary.getStyleClass().add("mono");
+            f.add("Changes", summary);
+            ToggleGroup group = new ToggleGroup();
+            RadioButton tree = new RadioButton("Apply to the working tree (unstaged changes)");
+            RadioButton stage = new RadioButton("Apply and stage the changes");
+            RadioButton commit = new RadioButton("Create the commits it contains (git am)");
+            tree.setToggleGroup(group);
+            stage.setToggleGroup(group);
+            commit.setToggleGroup(group);
+            commit.setDisable(!mailbox);
+            (mailbox ? commit : tree).setSelected(true);
+            f.add("Apply", new VBox(8, tree, stage, commit));
+            CheckBox threeWay = f.check("Fall back to a 3-way merge when the patch does not apply cleanly", true);
+            f.note(mailbox ? "This file was made with format-patch and carries commit messages and authors."
+                    : "This is a plain diff; it can be applied to the working tree or the index. A 3-way merge "
+                    + "also stages the result.");
+            if (!f.show(window(), "Apply Patch", "Apply " + patch.getFileName(), "Apply", null)) {
+                return;
+            }
+            Repo.PatchMode mode = commit.isSelected() ? Repo.PatchMode.COMMIT
+                    : stage.isSelected() ? Repo.PatchMode.STAGE : Repo.PatchMode.WORKING_TREE;
+            boolean three = threeWay.isSelected();
+            run("Apply patch", p -> repo.applyPatchFile(patch, mode, three),
+                    mode == Repo.PatchMode.COMMIT ? null : this::showLocalChanges);
+        }, "Cannot read the patch");
     }
 
     public void abortOperation() {
@@ -804,9 +1065,11 @@ public final class RepositoryView extends BorderPane {
         }
         refreshing = true;
         String oldSignature = logSignature;
+        List<String> only = List.copyOf(filterRefs);
+        List<String> hide = List.copyOf(hiddenRefs);
         READERS.submit(() -> {
             try {
-                Snapshot s = load(oldSignature, forceLog);
+                Snapshot s = load(oldSignature, forceLog, only, hide);
                 Platform.runLater(() -> {
                     apply(s);
                     finishRefresh();
@@ -830,18 +1093,27 @@ public final class RepositoryView extends BorderPane {
         }
     }
 
-    private Snapshot load(String oldSignature, boolean force) throws Exception {
+    private Snapshot load(String oldSignature, boolean force, List<String> only, List<String> hide)
+            throws Exception {
         List<Ref> r = repo.refs();
         String hb = repo.headBranch();
         String hh = repo.headHash();
-        StringBuilder sig = new StringBuilder().append(hb).append('|').append(hh).append('|');
+        // ignore filters on refs that no longer exist (deleted branches)
+        Set<String> existing = new HashSet<>();
+        for (Ref ref : r) {
+            existing.add(ref.fullName);
+        }
+        List<String> onlyExisting = only.stream().filter(existing::contains).toList();
+        List<String> hideExisting = hide.stream().filter(existing::contains).toList();
+        StringBuilder sig = new StringBuilder().append(hb).append('|').append(hh).append('|')
+                .append(onlyExisting).append('|').append(hideExisting).append('|');
         for (Ref ref : r) {
             sig.append(ref.fullName).append('=').append(ref.target).append(';');
         }
         String signature = sig.toString();
         List<Commit> commits = null;
         if (force || !signature.equals(oldSignature)) {
-            commits = repo.log(MAX_COMMITS);
+            commits = repo.log(MAX_COMMITS, onlyExisting, hideExisting);
         }
         List<StatusEntry> st = repo.status();
         List<Stash> sl = repo.stashes();
@@ -869,9 +1141,12 @@ public final class RepositoryView extends BorderPane {
             renderedKey = key;
             rebuildHistory();
         }
+        sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
         sidebar.update(refs, remotes, stashes, status.size());
+        updateScope();
         changes.setStatus(status, state, s.preparedMessage());
 
+        updateTrackingBadges();
         branchButton.setText(headBranch != null ? headBranch
                 : headHash != null ? "detached at " + headHash.substring(0, 7) : "no commits yet");
         HostedRepo hostedRepo = hosted();
@@ -893,7 +1168,8 @@ public final class RepositoryView extends BorderPane {
 
     private void rebuildHistory() {
         List<Commit> list = new ArrayList<>(logCommits.size() + 1);
-        if (!status.isEmpty()) {
+        boolean headShown = headHash != null && logCommits.stream().anyMatch(c -> c.hash.equals(headHash));
+        if (!status.isEmpty() && (headShown || headHash == null)) {
             list.add(Commit.workingTree(headHash, status.size()));
         }
         list.addAll(logCommits);
@@ -959,6 +1235,12 @@ public final class RepositoryView extends BorderPane {
             case STASH -> stashMenu(item.stash);
             case REMOTE -> remoteMenu(item.remote);
             case SECTION -> switch (item.key) {
+                case "sec:pinned" -> new ContextMenu(Ui.item("Unpin All", Icons.PIN, () -> {
+                    pinnedRefs.clear();
+                    saveBranchStates();
+                    sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
+                    sidebar.rebuildTree();
+                }));
                 case "sec:branches" -> new ContextMenu(Ui.item("New Branch…", Icons.PLUS,
                         () -> createBranch("HEAD", headBranch == null ? "HEAD" : headBranch)));
                 case "sec:remotes" -> new ContextMenu(Ui.item("Add Remote…", Icons.PLUS, this::addRemote),
@@ -966,7 +1248,9 @@ public final class RepositoryView extends BorderPane {
                 case "sec:stashes" -> new ContextMenu(Ui.item("Stash Changes…", Icons.STASH, this::stash));
                 default -> null;
             };
-            case LOCAL_CHANGES -> new ContextMenu(Ui.item("Stash Changes…", Icons.STASH, this::stash));
+            case LOCAL_CHANGES -> new ContextMenu(Ui.item("Stash Changes…", Icons.STASH, this::stash),
+                    Ui.item("Save Changes as Patch…", Icons.FILE, this::saveAllLocalChanges),
+                    Ui.item("Apply Patch…", Icons.PLUS, this::applyPatch));
             default -> null;
         };
     }
@@ -1007,6 +1291,7 @@ public final class RepositoryView extends BorderPane {
                         () -> Ui.openUrl(h.branchUrl(remoteBranchName(r.name)))));
             }
         }
+        m.getItems().addAll(branchStateItems(r));
         addCustom(m, CustomCommands.Target.BRANCH, null, r, null);
         return m;
     }
@@ -1027,6 +1312,7 @@ public final class RepositoryView extends BorderPane {
             m.getItems().add(Ui.item("Open Branch on " + h.provider.title, Icons.CLOUD,
                     () -> Ui.openUrl(h.branchUrl(r.remoteBranch()))));
         }
+        m.getItems().addAll(branchStateItems(r));
         addCustom(m, CustomCommands.Target.BRANCH, null, r, null);
         return m;
     }
@@ -1115,6 +1401,9 @@ public final class RepositoryView extends BorderPane {
                 Ui.item("Revert Commit…", Icons.UNDO, () -> revert(c)),
                 new SeparatorMenuItem(),
                 Ui.item("Reset '" + current() + "' to Here…", Icons.REFRESH, () -> reset(c)),
+                new SeparatorMenuItem(),
+                Ui.item("Save as Patch…", Icons.FILE, () -> saveCommitPatch(c)),
+                Ui.item("Save Patches from Here to HEAD…", Icons.FILE, () -> savePatchesAfter(c)),
                 new SeparatorMenuItem(),
                 Ui.item("Copy SHA", Icons.COPY, () -> Ui.copy(c.hash)),
                 Ui.item("Copy Message", Icons.COPY, () -> read(() -> repo.commitMessage(c.hash), Ui::copy)));

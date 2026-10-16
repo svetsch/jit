@@ -98,6 +98,13 @@ public final class JitApp extends Application {
         scene.setOnDragDropped(e -> {
             boolean done = false;
             for (File f : e.getDragboard().getFiles()) {
+                String n = f.getName().toLowerCase();
+                RepositoryView current = currentRepo();
+                if (f.isFile() && current != null && (n.endsWith(".patch") || n.endsWith(".diff"))) {
+                    Platform.runLater(() -> current.applyPatch(f.toPath()));
+                    done = true;
+                    continue;
+                }
                 Path p = f.isDirectory() ? f.toPath() : f.toPath().getParent();
                 if (p != null) {
                     openRepository(p, true);
@@ -269,6 +276,9 @@ public final class JitApp extends Application {
                 repoItem("Add Remote…", null, RepositoryView::addRemote),
                 repoItem("Repository Settings…", null, RepositoryView::showRepositorySettings),
                 repoItem("Abort Merge / Rebase", null, RepositoryView::abortOperation),
+                new SeparatorMenuItem(),
+                repoItem("Apply Patch…", "Shortcut+Shift+A", RepositoryView::applyPatch),
+                repoItem("Save Local Changes as Patch…", null, RepositoryView::saveAllLocalChanges),
                 new SeparatorMenuItem(),
                 repoItem("Open in Terminal", "Shortcut+Alt+T", rv -> Ui.openTerminal(rv.repo().root())),
                 repoItem("Show in Explorer", "Shortcut+Alt+E", rv -> Ui.openInExplorer(rv.repo().root())));

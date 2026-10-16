@@ -21,7 +21,8 @@ public final class Repo {
         MERGING("Merge in progress"),
         REBASING("Rebase in progress"),
         CHERRY_PICKING("Cherry-pick in progress"),
-        REVERTING("Revert in progress");
+        REVERTING("Revert in progress"),
+        APPLYING_PATCHES("Applying patches (git am) in progress");
 
         public final String label;
 
@@ -89,6 +90,9 @@ public final class Repo {
 
     public State state() throws GitException {
         Path d = gitDir();
+        if (Files.exists(d.resolve("rebase-apply").resolve("applying"))) {
+            return State.APPLYING_PATCHES;
+        }
         if (Files.isDirectory(d.resolve("rebase-merge")) || Files.isDirectory(d.resolve("rebase-apply"))) {
             return State.REBASING;
         }
@@ -136,8 +140,28 @@ public final class Repo {
     }
 
     public List<Commit> log(int max) throws GitException {
-        Git.Result r = git.run(null, null, List.of("log", "--exclude=refs/stash", "--all", "--date-order",
-                "-n", Integer.toString(max), "--format=" + LOG_FORMAT + "%x1e"));
+        return log(max, List.of(), List.of());
+    }
+
+    /**
+     * History of all refs, or only of {@code only} when it is not empty, leaving out commits reachable only from
+     * {@code hidden} refs (full ref names). HEAD is always included when not filtering, so the checked-out branch
+     * stays visible.
+     */
+    public List<Commit> log(int max, Collection<String> only, Collection<String> hidden) throws GitException {
+        List<String> args = new ArrayList<>(List.of("log", "--date-order", "-n", Integer.toString(max),
+                "--format=" + LOG_FORMAT + "%x1e"));
+        if (only.isEmpty()) {
+            args.add("--exclude=refs/stash");
+            for (String h : hidden) {
+                args.add("--exclude=" + h);
+            }
+            args.add("--all");
+        } else {
+            args.addAll(only);
+        }
+        args.add("--");
+        Git.Result r = git.run(null, null, args);
         if (!r.ok()) {
             if (headHash() == null) {
                 return new ArrayList<>();
@@ -762,13 +786,112 @@ public final class Repo {
             case REBASING -> git.exec("rebase", action);
             case CHERRY_PICKING -> git.exec("cherry-pick", action);
             case REVERTING -> git.exec("revert", action);
+            case APPLYING_PATCHES -> git.exec("am", action);
             default -> {
             }
         }
     }
 
     public void skipRebaseCommit() throws GitException {
-        git.exec("rebase", "--skip");
+        if (state() == State.APPLYING_PATCHES) {
+            git.exec("am", "--skip");
+        } else {
+            git.exec("rebase", "--skip");
+        }
+    }
+
+    // ------------------------------------------------------------------ patches
+
+    /** How {@link #applyPatchFile} applies a patch. */
+    public enum PatchMode {
+        /** {@code git apply}: change the working tree only. */
+        WORKING_TREE,
+        /** {@code git apply --index}: change the working tree and stage the changes. */
+        STAGE,
+        /** {@code git am}: create the commits contained in a mailbox patch (from format-patch). */
+        COMMIT
+    }
+
+    /** One commit as an email-style patch ({@code git format-patch}), including binary changes. */
+    public String formatPatch(String hash) throws GitException {
+        return git.exec("format-patch", "-1", "--stdout", "--binary", hash);
+    }
+
+    /** All commits after {@code base} up to HEAD as one mailbox, oldest first. */
+    public String formatPatches(String base) throws GitException {
+        return git.exec("format-patch", "--stdout", "--binary", base + "..HEAD");
+    }
+
+    /** A diff of local changes; untracked files are included as new files (unstaged side only). */
+    public String workingPatch(Collection<StatusEntry> entries, boolean staged) throws GitException {
+        StringBuilder sb = new StringBuilder();
+        List<String> tracked = new ArrayList<>();
+        for (StatusEntry e : entries) {
+            if (!staged && e.isUntracked()) {
+                Git.Result r = git.run(null, null, List.of("diff", "--no-index", "--binary", "--no-ext-diff",
+                        "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", e.path()));
+                if (r.exitCode() > 1) {
+                    throw new GitException(r.err().strip(), List.of("diff", "--no-index"));
+                }
+                sb.append(r.out());
+            } else {
+                tracked.add(e.path());
+                if (staged && e.origPath() != null) {
+                    tracked.add(e.origPath());
+                }
+            }
+        }
+        if (!tracked.isEmpty()) {
+            List<String> args = new ArrayList<>(List.of("diff", "--binary", "--no-ext-diff", "--src-prefix=a/",
+                    "--dst-prefix=b/", "-M"));
+            if (staged) {
+                args.add("--cached");
+            }
+            args.add("--");
+            args.addAll(tracked);
+            sb.insert(0, git.exec(args));
+        }
+        return sb.toString();
+    }
+
+    /** True when the file looks like {@code git format-patch} output (and can be applied with git am). */
+    public static boolean isMailbox(Path patch) {
+        try (var lines = Files.lines(patch, StandardCharsets.UTF_8)) {
+            return lines.limit(5).anyMatch(l -> l.startsWith("From ") || l.startsWith("Subject: "));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Summary of the files a patch changes ({@code git apply --stat}). */
+    public String patchStat(Path patch) throws GitException {
+        return git.exec("apply", "--stat", "--summary", patch.toString());
+    }
+
+    /** Null when the patch applies cleanly, else git's explanation. */
+    public String checkPatch(Path patch, PatchMode mode) throws GitException {
+        List<String> args = new ArrayList<>(List.of("apply", "--check"));
+        if (mode == PatchMode.STAGE || mode == PatchMode.COMMIT) {
+            args.add("--index");
+        }
+        args.add(patch.toString());
+        Git.Result r = git.run(null, null, args);
+        return r.ok() ? null : r.err().strip();
+    }
+
+    public void applyPatchFile(Path patch, PatchMode mode, boolean threeWay) throws GitException {
+        List<String> args = new ArrayList<>();
+        switch (mode) {
+            case WORKING_TREE -> args.add("apply");
+            case STAGE -> args.addAll(List.of("apply", "--index"));
+            case COMMIT -> args.add("am");
+        }
+        if (threeWay) {
+            args.add("--3way");
+        }
+        args.add("--whitespace=nowarn");
+        args.add(patch.toString());
+        git.exec(args);
     }
 
     // ------------------------------------------------------------------ remotes
