@@ -1,0 +1,1041 @@
+/* Layout and component styles. Colours come from the -jit-* tokens defined in light.css / dark.css. */
+
+.root {
+    -fx-font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- generic */
+
+.split-pane {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: -jit-border;
+    -fx-padding: 0 0.5 0 0.5;
+}
+
+.split-pane:vertical > .split-pane-divider {
+    -fx-padding: 0.5 0 0.5 0;
+}
+
+.list-view, .table-view, .tree-view,
+.list-view:focused, .table-view:focused, .tree-view:focused {
+    -fx-background-color: -fx-control-inner-background;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}
+
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar > .thumb {
+    -fx-background-color: -jit-scroll-thumb;
+    -fx-background-radius: 4;
+    -fx-background-insets: 2;
+}
+
+.scroll-bar > .increment-button, .scroll-bar > .decrement-button {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+}
+
+.scroll-bar > .increment-button > .increment-arrow,
+.scroll-bar > .decrement-button > .decrement-arrow {
+    -fx-padding: 0;
+    -fx-shape: null;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 11;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 11;
+}
+
+.corner {
+    -fx-background-color: transparent;
+}
+
+.placeholder-text {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.dim-text {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.text-field, .text-area, .combo-box {
+    -fx-background-radius: 4;
+}
+
+.text-input {
+    -fx-prompt-text-fill: -jit-text-dim;
+}
+
+.icon {
+    -fx-stroke: -jit-icon;
+    -fx-fill: transparent;
+}
+
+.icon.accent {
+    -fx-stroke: -jit-accent;
+}
+
+.icon.warning {
+    -fx-stroke: #d4a017;
+}
+
+.icon.badge-icon-head {
+    -fx-stroke: white;
+}
+
+.danger .icon {
+    -fx-stroke: -jit-danger;
+}
+
+/* ---------------------------------------------------------------- application chrome */
+
+.app-menu {
+    -fx-background-color: -jit-tabbar;
+    -fx-padding: 0 4;
+}
+
+.repo-tabs > .tab-header-area {
+    -fx-padding: 4 44 0 6;
+}
+
+.repo-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: -jit-tabbar;
+    -fx-effect: null;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7 7 0 0;
+    -fx-padding: 3 6 3 10;
+    -fx-min-width: 140;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -jit-toolbar;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -jit-text-dim;
+    -fx-graphic-text-gap: 6;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -jit-text;
+    -fx-font-weight: bold;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+.repo-tabs > .tab-header-area > .headers-region > .tab > .tab-container > .tab-close-button {
+    -fx-background-color: -jit-text-dim;
+}
+
+.repo-tabs > .tab-content-area {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.new-tab-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5;
+    -fx-padding: 5;
+}
+
+.new-tab-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+/* ---------------------------------------------------------------- repository toolbar */
+
+.repo-toolbar {
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: transparent transparent -jit-border transparent;
+    -fx-padding: 5 10 5 12;
+}
+
+.repo-box {
+    -fx-padding: 0 10 0 0;
+}
+
+.repo-name {
+    -fx-font-size: 14.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.branch-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-padding: 1 2 1 0;
+    -fx-graphic-text-gap: 5;
+}
+
+.branch-button > .label {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.branch-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.branch-button > .arrow-button > .arrow {
+    -fx-background-color: -jit-text-dim;
+}
+
+.tool-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 4 9 3 9;
+    -fx-text-fill: -jit-text;
+    -fx-font-size: 11px;
+    -fx-graphic-text-gap: 3;
+    -fx-min-width: 56;
+}
+
+.tool-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.tool-button:pressed {
+    -fx-background-color: -jit-pressed;
+}
+
+.toolbar-separator {
+    -fx-padding: 8 6 8 6;
+}
+
+.toolbar-separator > .line {
+    -fx-border-color: transparent -jit-border transparent transparent;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.sidebar {
+    -fx-background-color: -jit-sidebar;
+    -fx-min-width: 180;
+}
+
+.sidebar-tree, .sidebar-tree:focused {
+    -fx-background-color: -jit-sidebar;
+    -fx-padding: 6 0 6 0;
+}
+
+.sidebar-tree .tree-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 3 8 3 2;
+    -fx-text-fill: -jit-text;
+}
+
+.sidebar-tree .tree-cell:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.sidebar-tree .tree-cell:selected {
+    -fx-background-color: -fx-selection-bar-non-focused;
+}
+
+.sidebar-tree:focused .tree-cell:selected {
+    -fx-background-color: -fx-selection-bar;
+}
+
+.sidebar-tree .tree-cell.section-cell {
+    -fx-padding: 12 8 3 2;
+}
+
+.sidebar-tree .tree-cell.section-cell .sidebar-text {
+    -fx-font-weight: bold;
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.sidebar-tree .tree-cell .tree-disclosure-node > .arrow {
+    -fx-background-color: -jit-text-dim;
+}
+
+.sidebar-text {
+    -fx-text-fill: -jit-text;
+}
+
+.head-cell .sidebar-text {
+    -fx-font-weight: bold;
+}
+
+.count-badge {
+    -fx-background-color: -jit-accent;
+    -fx-background-radius: 9;
+    -fx-text-fill: white;
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 6 0 6;
+}
+
+.sidebar-count, .track-label {
+    -fx-text-fill: -jit-text-dim;
+    -fx-font-size: 11px;
+}
+
+.sidebar-filter-box {
+    -fx-padding: 6 10 6 10;
+    -fx-border-color: -jit-border transparent transparent transparent;
+}
+
+.sidebar-filter, .sidebar-filter:focused {
+    -fx-background-color: transparent;
+    -fx-padding: 2;
+}
+
+/* ---------------------------------------------------------------- history */
+
+.search-bar {
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: transparent transparent -jit-border transparent;
+    -fx-padding: 4 12 4 12;
+}
+
+.search-field, .search-field:focused {
+    -fx-background-color: transparent;
+    -fx-padding: 3;
+}
+
+.commit-table .column-header-background {
+    -fx-background-color: -jit-toolbar;
+}
+
+.commit-table .column-header-background > .filler {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -jit-border transparent;
+}
+
+.commit-table .column-header {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent -jit-border -jit-border transparent;
+    -fx-size: 26;
+}
+
+.commit-table .column-header .label {
+    -fx-text-fill: -jit-text-dim;
+    -fx-font-weight: normal;
+    -fx-alignment: center-left;
+    -fx-padding: 0 6 0 6;
+}
+
+.commit-table .table-row-cell {
+    -fx-background-color: -fx-control-inner-background;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.commit-table .table-row-cell:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.commit-table .table-row-cell:selected {
+    -fx-background-color: -fx-selection-bar-non-focused;
+}
+
+.commit-table:focused .table-row-cell:selected {
+    -fx-background-color: -fx-selection-bar;
+}
+
+.commit-table .table-cell {
+    -fx-border-color: transparent;
+    -fx-padding: 0 6 0 6;
+    -fx-text-fill: -jit-text;
+    -fx-alignment: center-left;
+}
+
+.commit-table .table-row-cell:selected .table-cell {
+    -fx-text-fill: -jit-text;
+}
+
+.commit-table .table-cell.graph-cell {
+    -fx-padding: 0 6 0 0;
+}
+
+.commit-table .table-cell.sha-column {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.commit-subject-cell {
+    -fx-text-fill: -jit-text;
+}
+
+.working-tree-subject {
+    -fx-font-style: italic;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.ref-badge {
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-border-width: 1;
+    -fx-padding: 0 5 0 5;
+    -fx-font-size: 11px;
+    -fx-text-fill: -jit-text;
+    -fx-graphic-text-gap: 3;
+    -fx-content-display: right;
+}
+
+.ref-badge.head-badge {
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-content-display: left;
+}
+
+.ref-badge.remote-badge {
+    -fx-content-display: left;
+}
+
+.ref-badge.tag-badge {
+    -fx-background-color: -jit-tag-bg;
+    -fx-border-color: -jit-tag-border;
+    -fx-text-fill: -jit-tag-text;
+    -fx-content-display: left;
+}
+
+.tag-badge .icon {
+    -fx-stroke: -jit-tag-text;
+}
+
+/* ---------------------------------------------------------------- panes & lists */
+
+.pane-header {
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: transparent transparent -jit-border transparent;
+    -fx-padding: 4 8 4 10;
+    -fx-min-height: 31;
+    -fx-alignment: center-left;
+}
+
+.pane-header-text {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.small-button {
+    -fx-background-color: -jit-button;
+    -fx-border-color: -jit-border;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-padding: 2 8 2 8;
+    -fx-font-size: 11px;
+    -fx-graphic-text-gap: 4;
+    -fx-text-fill: -jit-text;
+}
+
+.small-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.small-button:pressed {
+    -fx-background-color: -jit-pressed;
+}
+
+.small-button.danger {
+    -fx-text-fill: -jit-danger;
+}
+
+.file-list .list-cell {
+    -fx-padding: 3 8 3 8;
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.file-list .list-cell:filled:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.file-list .list-cell:filled:selected {
+    -fx-background-color: -fx-selection-bar-non-focused;
+}
+
+.file-list:focused .list-cell:filled:selected {
+    -fx-background-color: -fx-selection-bar;
+}
+
+.file-name {
+    -fx-text-fill: -jit-text;
+}
+
+.file-dir {
+    -fx-text-fill: -jit-text-dim;
+    -fx-font-size: 11.5px;
+}
+
+.status-badge {
+    -fx-min-width: 16;
+    -fx-pref-width: 16;
+    -fx-min-height: 16;
+    -fx-pref-height: 16;
+    -fx-background-radius: 4;
+    -fx-text-fill: white;
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 0;
+}
+
+.status-added {
+    -fx-background-color: #2da44e;
+}
+
+.status-modified {
+    -fx-background-color: #d4930d;
+}
+
+.status-deleted {
+    -fx-background-color: #d1242f;
+}
+
+.status-renamed {
+    -fx-background-color: #3b82f6;
+}
+
+.status-conflict {
+    -fx-background-color: #a855f7;
+}
+
+/* ---------------------------------------------------------------- diff */
+
+.diff-view {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.diff-header {
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: transparent transparent -jit-border transparent;
+    -fx-padding: 4 10 4 10;
+    -fx-min-height: 31;
+}
+
+.diff-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.diff-stats {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.diff-list .list-cell {
+    -fx-padding: 0;
+    -fx-background-color: -fx-control-inner-background;
+    -fx-cell-size: 20;
+}
+
+.diff-list .list-cell.diff-add {
+    -fx-background-color: -jit-add-bg;
+}
+
+.diff-list .list-cell.diff-del {
+    -fx-background-color: -jit-del-bg;
+}
+
+.diff-list .list-cell.diff-hunk {
+    -fx-background-color: -jit-hunk-bg;
+    -fx-padding: 0 0 0 8;
+    -fx-cell-size: 28;
+}
+
+.diff-list .list-cell.diff-meta {
+    -fx-padding: 0 0 0 8;
+    -fx-cell-size: 26;
+}
+
+.diff-list .list-cell:filled:selected {
+    -fx-background-color: -fx-control-inner-background, -jit-line-selection;
+}
+
+.diff-list .list-cell.diff-add:selected {
+    -fx-background-color: -jit-add-bg, -jit-line-selection;
+}
+
+.diff-list .list-cell.diff-del:selected {
+    -fx-background-color: -jit-del-bg, -jit-line-selection;
+}
+
+.diff-list .list-cell.diff-hunk:selected {
+    -fx-background-color: -jit-hunk-bg;
+}
+
+.line-no {
+    -fx-min-width: 44;
+    -fx-pref-width: 44;
+    -fx-max-height: 1000;
+    -fx-alignment: center-right;
+    -fx-padding: 0 6 0 0;
+    -fx-text-fill: -jit-text-dim;
+    -fx-font-size: 11.5px;
+}
+
+.diff-add .line-no {
+    -fx-background-color: -jit-add-num;
+}
+
+.diff-del .line-no {
+    -fx-background-color: -jit-del-num;
+}
+
+.line-sign {
+    -fx-min-width: 18;
+    -fx-alignment: center;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.diff-add .line-sign {
+    -fx-text-fill: -jit-add-sign;
+}
+
+.diff-del .line-sign {
+    -fx-text-fill: -jit-del-sign;
+}
+
+.line-text {
+    -fx-text-fill: -jit-text;
+    -fx-padding: 0 16 0 0;
+}
+
+.hunk-text {
+    -fx-text-fill: -jit-hunk-text;
+    -fx-font-size: 11.5px;
+}
+
+.diff-meta .hunk-text {
+    -fx-font-style: italic;
+    -fx-text-fill: -jit-text-dim;
+}
+
+/* ---------------------------------------------------------------- commit details */
+
+.commit-info, .plain-scroll, .plain-scroll > .viewport {
+    -fx-background-color: -fx-control-inner-background;
+    -fx-background-insets: 0;
+}
+
+.plain-scroll {
+    -fx-padding: 0;
+}
+
+.author-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.commit-subject {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+    -fx-text-fill: -jit-text;
+}
+
+.commit-body {
+    -fx-text-fill: -jit-text;
+}
+
+.meta-key {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.meta-value {
+    -fx-text-fill: -jit-text;
+}
+
+.mono-link, .mono-link:visited, .mono-link:hover {
+    -fx-padding: 0;
+    -fx-border-width: 0;
+    -fx-text-fill: -jit-accent;
+    -fx-underline: false;
+}
+
+.mono-link:hover {
+    -fx-underline: true;
+}
+
+/* ---------------------------------------------------------------- local changes */
+
+.commit-box {
+    -fx-padding: 10;
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: -jit-border transparent transparent transparent;
+}
+
+.commit-subject-field {
+    -fx-font-weight: bold;
+}
+
+.commit-button {
+    -fx-background-color: -jit-accent;
+    -fx-background-radius: 5;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 6 16 6 16;
+}
+
+.commit-button:hover {
+    -fx-background-color: -jit-accent-hover;
+}
+
+.state-hint {
+    -fx-text-fill: -jit-warning-text;
+}
+
+/* ---------------------------------------------------------------- banner & status bar */
+
+.state-banner {
+    -fx-background-color: -jit-banner-bg;
+    -fx-border-color: transparent transparent -jit-banner-border transparent;
+    -fx-padding: 6 12 6 12;
+}
+
+.banner-text {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.status-bar {
+    -fx-background-color: -jit-toolbar;
+    -fx-border-color: -jit-border transparent transparent transparent;
+    -fx-padding: 3 10 3 10;
+}
+
+.status-text, .status-path {
+    -fx-text-fill: -jit-text-dim;
+    -fx-font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------- welcome page */
+
+.welcome-view {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.welcome-title {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.welcome-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.welcome-action {
+    -fx-background-color: -jit-sidebar;
+    -fx-border-color: -jit-border;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 14;
+    -fx-alignment: top-left;
+}
+
+.welcome-action:hover {
+    -fx-border-color: -jit-accent;
+    -fx-background-color: -jit-hover;
+}
+
+.action-title {
+    -fx-font-size: 13.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.action-description {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.section-title {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.recent-list, .recent-list:focused {
+    -fx-border-color: -jit-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 1;
+}
+
+.recent-list .list-cell {
+    -fx-padding: 8 12 8 12;
+    -fx-background-color: transparent;
+}
+
+.recent-list .list-cell:filled:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.recent-list .list-cell:filled:selected {
+    -fx-background-color: -fx-selection-bar;
+}
+
+.recent-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+/* ---------------------------------------------------------------- dialogs */
+
+.jit-dialog > .header-panel {
+    -fx-background-color: -jit-toolbar;
+    -fx-padding: 12 20 12 20;
+}
+
+.jit-dialog > .header-panel .label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.form-label {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.form-value {
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+.form-note {
+    -fx-text-fill: -jit-text;
+}
+
+.danger-text {
+    -fx-text-fill: -jit-danger;
+}
+
+.progress-box {
+    -fx-background-color: -fx-background;
+}
+
+/* ---------------------------------------------------------------- blame */
+
+.blame-list .list-cell {
+    -fx-padding: 0 8 0 0;
+}
+
+.blame-hash {
+    -fx-text-fill: -jit-accent;
+}
+
+.blame-author {
+    -fx-text-fill: -jit-text;
+}
+
+.blame-date {
+    -fx-text-fill: -jit-text-dim;
+}
+
+/* ---------------------------------------------------------------- about */
+
+.about-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -jit-text;
+}
+
+/* ---------------------------------------------------------------- diff layout toggle & side by side */
+
+.segment {
+    -fx-background-color: -jit-button;
+    -fx-border-color: -jit-border;
+    -fx-padding: 2 9 2 9;
+    -fx-font-size: 11px;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.segment-left {
+    -fx-background-radius: 4 0 0 4;
+    -fx-border-radius: 4 0 0 4;
+}
+
+.segment-right {
+    -fx-background-radius: 0 4 4 0;
+    -fx-border-radius: 0 4 4 0;
+    -fx-border-width: 1 1 1 0;
+}
+
+.segment:selected {
+    -fx-background-color: -jit-accent;
+    -fx-border-color: -jit-accent;
+    -fx-text-fill: white;
+}
+
+.split-side {
+    -fx-max-height: 1000;
+    -fx-border-color: transparent -jit-border transparent transparent;
+}
+
+.split-side.side-add {
+    -fx-background-color: -jit-add-bg;
+}
+
+.split-side.side-del {
+    -fx-background-color: -jit-del-bg;
+}
+
+.split-side.side-empty {
+    -fx-background-color: -jit-empty-side;
+}
+
+.side-add .line-no {
+    -fx-background-color: -jit-add-num;
+}
+
+.side-del .line-no {
+    -fx-background-color: -jit-del-num;
+}
+
+.split-text {
+    -fx-padding: 0 8 0 8;
+}
+
+.diff-list .list-cell.diff-split:selected {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.diff-split:selected .split-side.side-ctx, .diff-split:selected .split-side.side-empty {
+    -fx-background-color: -jit-line-selection;
+}
+
+.diff-split:selected .split-side.side-add {
+    -fx-background-color: -jit-add-bg, -jit-line-selection;
+}
+
+.diff-split:selected .split-side.side-del {
+    -fx-background-color: -jit-del-bg, -jit-line-selection;
+}
+
+/* ---------------------------------------------------------------- links in commit messages */
+
+.flow-text {
+    -fx-fill: -jit-text;
+}
+
+.flow-text.commit-subject {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.hyperlink.issue-link, .hyperlink.issue-link:visited {
+    -fx-padding: 0;
+    -fx-border-width: 0;
+    -fx-text-fill: -jit-accent;
+    -fx-underline: false;
+}
+
+.hyperlink.issue-link:hover {
+    -fx-underline: true;
+}
+
+.hyperlink.issue-link.commit-subject {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- toolbar menus, status bar, banners */
+
+.tool-menu > .arrow-button {
+    -fx-padding: 0;
+}
+
+.tool-menu > .arrow-button > .arrow {
+    -fx-padding: 0;
+    -fx-shape: null;
+}
+
+.tool-menu > .label {
+    -fx-text-fill: -jit-text;
+}
+
+.status-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.status-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.status-text {
+    -fx-cursor: hand;
+}
+
+.options-button, .recent-messages-button {
+    -fx-background-color: -jit-button;
+    -fx-border-color: -jit-border;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-padding: 1 4 1 6;
+    -fx-font-size: 11.5px;
+}
+
+.options-button > .label {
+    -fx-text-fill: -jit-text;
+}
+
+.options-button:hover, .recent-messages-button:hover {
+    -fx-background-color: -jit-hover;
+}
+
+.info-banner {
+    -fx-background-color: -jit-info-bg;
+    -fx-border-color: transparent transparent -jit-info-border transparent;
+}
+
+/* ---------------------------------------------------------------- command history */
+
+.command-table .table-cell.command-write {
+    -fx-font-weight: bold;
+}
+
+.command-table .table-cell.command-query {
+    -fx-text-fill: -jit-text-dim;
+}
+
+.command-table .table-cell.exit-ok {
+    -fx-text-fill: -jit-add-sign;
+}
+
+.command-table .table-cell.exit-failed {
+    -fx-text-fill: -jit-danger;
+    -fx-font-weight: bold;
+}
+
+.command-details {
+    -fx-font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- interactive rebase */
+
+.rebase-list .list-cell {
+    -fx-padding: 4 8 4 8;
+}
+
+.rebase-list .list-cell.rebase-drop .file-name {
+    -fx-strikethrough: true;
+    -fx-text-fill: -jit-text-dim;
+}
+
+.rebase-list .list-cell.rebase-squash {
+    -fx-padding: 4 8 4 28;
+}

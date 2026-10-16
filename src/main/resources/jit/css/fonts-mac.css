@@ -1,0 +1,3 @@
+.mono, .line-text, .line-no, .line-sign, .hunk-text, .mono-link, .sha-column, .blame-hash, .blame-date {
+    -fx-font-family: "Menlo";
+}

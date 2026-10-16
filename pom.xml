@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>jit</groupId>
+    <artifactId>jit</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>Jit</name>
+    <description>A fast and friendly Git client written in JavaFX</description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javafx.version>21.0.12</javafx.version>
+        <main.class>jit.Launcher</main.class>
+        <maven.build.timestamp.format>yyyy-MM-dd HH:mm 'UTC'</maven.build.timestamp.format>
+        <build.time>${maven.build.timestamp}</build.time>
+
+        <!-- native packaging (profile "native"); the version must be numeric for jpackage -->
+        <native.version>1.0.0</native.version>
+        <native.dir>${project.build.directory}/native</native.dir>
+        <jpackage.type>app-image</jpackage.type>
+        <jpackage.extra.args></jpackage.extra.args>
+        <native.modules>java.base,java.datatransfer,java.desktop,java.logging,java.management,java.naming,java.prefs,java.scripting,java.xml,jdk.charsets,jdk.unsupported,jdk.zipfs</native.modules>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>jit/build.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>jit/build.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+        <plugins>
+            <!-- build info for Help > About: commit id and dirty state, tolerant of builds outside git -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.2.0</version>
+                <executions>
+                    <execution>
+                        <id>git-commit</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>git</executable>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <arguments>
+                                <argument>log</argument>
+                                <argument>-1</argument>
+                                <argument>--date=format:%Y-%m-%d %H:%M</argument>
+                                <argument>--format=commit=%H%ncommitShort=%h%ncommitTime=%cd</argument>
+                            </arguments>
+                            <outputFile>${project.build.outputDirectory}/jit/git.properties</outputFile>
+                            <successCodes>
+                                <successCode>0</successCode>
+                                <successCode>128</successCode>
+                            </successCodes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>git-status</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>git</executable>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <arguments>
+                                <argument>status</argument>
+                                <argument>--porcelain</argument>
+                                <argument>--untracked-files=no</argument>
+                            </arguments>
+                            <outputFile>${project.build.outputDirectory}/jit/git-status.txt</outputFile>
+                            <successCodes>
+                                <successCode>0</successCode>
+                                <successCode>128</successCode>
+                            </successCodes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>${main.class}</mainClass>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>jit</finalName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${main.class}</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+            mvn -Pnative package
+            Builds a self-contained native application with jpackage: target/native/output/Jit/Jit.exe (Windows),
+            Jit.app (macOS) or Jit/bin/Jit (Linux), bundling a minimal Java runtime, so no Java installation is
+            needed. Build on the target operating system: JavaFX native libraries are platform specific.
+        -->
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-clean-plugin</artifactId>
+                        <version>3.4.0</version>
+                        <executions>
+                            <execution>
+                                <id>clean-native</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>clean</goal>
+                                </goals>
+                                <configuration>
+                                    <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                                    <filesets>
+                                        <fileset>
+                                            <directory>${native.dir}</directory>
+                                        </fileset>
+                                    </filesets>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>native-input</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${native.dir}/input</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.build.directory}</directory>
+                                            <includes>
+                                                <include>jit.jar</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.2.0</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${java.home}/bin/jpackage</executable>
+                                    <commandlineArgs>--type ${jpackage.type} --name Jit --app-version ${native.version} --vendor Jit --description "Git client" --input "${native.dir}/input" --main-jar jit.jar --main-class ${main.class} --add-modules ${native.modules} --java-options -Dfile.encoding=UTF-8 --dest "${native.dir}/output" ${jpackage.extra.args}</commandlineArgs>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+            mvn -Pnative,windows-installer package
+            Windows installer (per-user, Start menu and desktop shortcut). Needs the WiX Toolset 3.x on the PATH.
+            Use -Djpackage.type=exe for a setup .exe instead of an .msi.
+        -->
+        <profile>
+            <id>windows-installer</id>
+            <properties>
+                <jpackage.type>msi</jpackage.type>
+                <jpackage.extra.args>--win-menu --win-menu-group Jit --win-shortcut --win-per-user-install --win-dir-chooser --win-upgrade-uuid 6a3c2f10-6c33-4f53-9d0e-5d2b7f8e9a41</jpackage.extra.args>
+            </properties>
+        </profile>
+    </profiles>
+</project>

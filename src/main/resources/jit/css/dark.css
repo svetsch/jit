@@ -1,0 +1,47 @@
+.root {
+    -fx-base: #2c3037;
+    -fx-background: #1f2227;
+    -fx-control-inner-background: #1f2227;
+    -fx-control-inner-background-alt: #1f2227;
+    -fx-accent: #3b82f6;
+    -fx-focus-color: #3b82f6;
+    -fx-faint-focus-color: #3b82f622;
+    -fx-selection-bar: #26446e;
+    -fx-selection-bar-non-focused: #2d3644;
+    -fx-selection-bar-text: #e3e6ea;
+
+    -jit-text: #d8dce1;
+    -jit-text-dim: #8c949f;
+    -jit-border: #33373e;
+    -jit-sidebar: #24272d;
+    -jit-toolbar: #272a30;
+    -jit-tabbar: #1a1c20;
+    -jit-icon: #b3bbc5;
+    -jit-accent: #4c8ef7;
+    -jit-accent-hover: #3b7ce6;
+    -jit-hover: #2d3139;
+    -jit-pressed: #353a43;
+    -jit-button: #2c3037;
+    -jit-danger: #f0646c;
+    -jit-warning-text: #e3b341;
+    -jit-scroll-thumb: #464c56;
+
+    -jit-add-bg: #1c3125;
+    -jit-add-num: #213b2d;
+    -jit-add-sign: #5ad07f;
+    -jit-del-bg: #3a2024;
+    -jit-del-num: #46262b;
+    -jit-del-sign: #f07178;
+    -jit-hunk-bg: #222b39;
+    -jit-hunk-text: #8fa3bf;
+    -jit-line-selection: #4c8ef740;
+
+    -jit-empty-side: #1a1c20;
+    -jit-info-bg: #1f2c3d;
+    -jit-info-border: #2e4a6e;
+    -jit-banner-bg: #3a3120;
+    -jit-banner-border: #6b5a2a;
+    -jit-tag-bg: #3a3322;
+    -jit-tag-border: #9c823a;
+    -jit-tag-text: #e9d08a;
+}

@@ -1,0 +1,8 @@
+target/
+*.iml
+.idea/
+.vscode/
+.settings/
+.project
+.classpath
+jit.properties
