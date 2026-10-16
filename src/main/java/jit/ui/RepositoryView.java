@@ -36,7 +36,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.geometry.Orientation;
-import javafx.scene.image.Image;
 import javafx.stage.Window;
 
 import jit.git.Commit;
@@ -469,8 +468,7 @@ public final class RepositoryView extends BorderPane {
     }
 
     public void showCommandLog() {
-        Image icon = window() instanceof javafx.stage.Stage st && !st.getIcons().isEmpty() ? st.getIcons().get(0) : null;
-        CommandLogWindow.show(repo.root(), icon);
+        CommandLogWindow.show(repo.root());
     }
 
     public void showRepositorySettings() {

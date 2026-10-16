@@ -12,9 +12,6 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.SnapshotParameters;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -29,18 +26,12 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
-import javafx.scene.image.Image;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.Stop;
-import javafx.scene.shape.StrokeLineCap;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -50,6 +41,7 @@ import jit.git.Git;
 import jit.git.GitException;
 import jit.git.Repo;
 import jit.ui.AboutDialog;
+import jit.ui.AppIcon;
 import jit.ui.CommandLogWindow;
 import jit.ui.Dialogs;
 import jit.ui.Icons;
@@ -118,7 +110,7 @@ public final class JitApp extends Application {
         Theme.apply(scene);
         stage.setScene(scene);
         stage.setTitle("Jit");
-        stage.getIcons().addAll(appIcon(16), appIcon(32), appIcon(64), appIcon(256));
+        stage.getIcons().setAll(AppIcon.images());
         if (Settings.getDouble("maximized", 0) > 0) {
             stage.setMaximized(true);
         }
@@ -300,12 +292,12 @@ public final class JitApp extends Application {
                     if (rv != null) {
                         rv.showCommandLog();
                     } else {
-                        CommandLogWindow.show(null, stage.getIcons().isEmpty() ? null : stage.getIcons().get(0));
+                        CommandLogWindow.show(null);
                     }
                 }));
 
         Menu help = new Menu("Help");
-        help.getItems().add(item("About Jit", null, () -> AboutDialog.show(stage, appIcon(128))));
+        help.getItems().add(item("About Jit", null, () -> AboutDialog.show(stage, AppIcon.image(128))));
 
         MenuBar bar = new MenuBar(file, repository, view, help);
         bar.getStyleClass().add("app-menu");
@@ -610,31 +602,5 @@ public final class JitApp extends Application {
         }
         int i = Math.max(s.lastIndexOf('/'), s.lastIndexOf(':'));
         return i >= 0 ? s.substring(i + 1) : s;
-    }
-
-    // ------------------------------------------------------------------ icon
-
-    private static Image appIcon(int size) {
-        Canvas c = new Canvas(size, size);
-        GraphicsContext g = c.getGraphicsContext2D();
-        double s = size / 64.0;
-        g.setFill(new LinearGradient(0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.web("#4f8ff7")), new Stop(1, Color.web("#2557c7"))));
-        g.fillRoundRect(2 * s, 2 * s, 60 * s, 60 * s, 18 * s, 18 * s);
-        g.setStroke(Color.WHITE);
-        g.setLineWidth(5 * s);
-        g.setLineCap(StrokeLineCap.ROUND);
-        g.strokeLine(22 * s, 16 * s, 22 * s, 48 * s);
-        g.beginPath();
-        g.moveTo(42 * s, 22 * s);
-        g.bezierCurveTo(42 * s, 34 * s, 22 * s, 30 * s, 22 * s, 42 * s);
-        g.stroke();
-        g.setFill(Color.WHITE);
-        g.fillOval(15.5 * s, 9.5 * s, 13 * s, 13 * s);
-        g.fillOval(15.5 * s, 41.5 * s, 13 * s, 13 * s);
-        g.fillOval(35.5 * s, 15.5 * s, 13 * s, 13 * s);
-        SnapshotParameters p = new SnapshotParameters();
-        p.setFill(Color.TRANSPARENT);
-        return c.snapshot(p, null);
     }
 }

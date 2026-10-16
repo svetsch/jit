@@ -26,7 +26,6 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -53,7 +52,7 @@ public final class CommandLogWindow {
     private Path repoRoot;
 
     /** Opens (or focuses) the history window, filtered to the given repository when not null. */
-    public static void show(Path repoRoot, Image icon) {
+    public static void show(Path repoRoot) {
         if (instance == null) {
             instance = new CommandLogWindow();
         }
@@ -62,8 +61,8 @@ public final class CommandLogWindow {
         instance.onlyRepo.setSelected(repoRoot != null);
         instance.onlyRepo.setText(repoRoot == null ? "Only this repository"
                 : "Only " + (repoRoot.getFileName() == null ? repoRoot : repoRoot.getFileName()));
-        if (icon != null && instance.stage.getIcons().isEmpty()) {
-            instance.stage.getIcons().add(icon);
+        if (instance.stage.getIcons().isEmpty()) {
+            instance.stage.getIcons().setAll(AppIcon.images());
         }
         Theme.apply(instance.stage.getScene());
         instance.updateFilter();

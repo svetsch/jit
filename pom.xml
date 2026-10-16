@@ -23,6 +23,8 @@
         <native.dir>${project.build.directory}/native</native.dir>
         <jpackage.type>app-image</jpackage.type>
         <jpackage.extra.args></jpackage.extra.args>
+        <!-- set by the OS profiles below: the launcher icon (.ico on Windows, .png on Linux) -->
+        <jpackage.icon.args></jpackage.icon.args>
         <native.modules>java.base,java.datatransfer,java.desktop,java.logging,java.management,java.naming,java.prefs,java.scripting,java.xml,jdk.charsets,jdk.unsupported,jdk.zipfs</native.modules>
     </properties>
 
@@ -235,13 +237,37 @@
                                 </goals>
                                 <configuration>
                                     <executable>${java.home}/bin/jpackage</executable>
-                                    <commandlineArgs>--type ${jpackage.type} --name Jit --app-version ${native.version} --vendor Jit --description "Git client" --input "${native.dir}/input" --main-jar jit.jar --main-class ${main.class} --add-modules ${native.modules} --java-options -Dfile.encoding=UTF-8 --dest "${native.dir}/output" ${jpackage.extra.args}</commandlineArgs>
+                                    <commandlineArgs>--type ${jpackage.type} --name Jit --app-version ${native.version} --vendor Jit --description "Git client" --input "${native.dir}/input" --main-jar jit.jar --main-class ${main.class} --add-modules ${native.modules} --java-options -Dfile.encoding=UTF-8 --dest "${native.dir}/output" ${jpackage.icon.args} ${jpackage.extra.args}</commandlineArgs>
                                 </configuration>
                             </execution>
                         </executions>
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+
+        <!-- launcher icons, picked automatically for the build OS (regenerate with jit.dev.IconGenerator) -->
+        <profile>
+            <id>icon-windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <jpackage.icon.args>--icon "${project.basedir}/packaging/windows/jit.ico"</jpackage.icon.args>
+            </properties>
+        </profile>
+        <profile>
+            <id>icon-linux</id>
+            <activation>
+                <os>
+                    <name>linux</name>
+                </os>
+            </activation>
+            <properties>
+                <jpackage.icon.args>--icon "${project.basedir}/packaging/linux/jit.png"</jpackage.icon.args>
+            </properties>
         </profile>
 
         <!--

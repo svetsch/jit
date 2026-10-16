@@ -155,4 +155,9 @@ specific file.
 The git layer is covered by integration tests against a real git (staging lines and hunks, CRLF files, stashes,
 merge conflicts, push/pull, interactive rebase, commit options) — `mvn test`.
 
-Developer aid: `-Djit.snapshots=<folder>` walks through the main screens, saves PNG snapshots and exits.
+Developer aids:
+- `-Djit.snapshots=<folder>` walks through the main screens, saves PNG snapshots and exits.
+- The application icon is drawn in `jit.ui.AppIcon`; after changing it, run `jit.dev.IconGenerator` (from the project
+  folder, with the JavaFX jars on the class path) to regenerate the window icons in `src/main/resources/jit/icons`,
+  `packaging/windows/jit.ico` (the `Jit.exe` icon) and `packaging/linux/jit.png`. The `native` profile picks the
+  launcher icon for the build OS automatically.
