@@ -36,12 +36,15 @@ import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.geometry.Orientation;
 import javafx.stage.Window;
 
 import jit.git.Commit;
+import jit.git.Git;
+import jit.git.Progress;
 import jit.git.FileChange;
 import jit.git.Ref;
 import jit.git.Repo;
@@ -101,6 +104,17 @@ public final class RepositoryView extends BorderPane {
     private final MenuButton commandsButton = toolMenu("Commands", Icons.LIST, "Custom commands");
 
     private int busy;
+    private final javafx.scene.control.ProgressBar opProgress = new javafx.scene.control.ProgressBar();
+    private final javafx.scene.control.ProgressBar topProgress = new javafx.scene.control.ProgressBar();
+    private final Button cancelButton = Ui.smallButton("Cancel", Icons.CLOSE, this::cancelOperation);
+    private final javafx.animation.PauseTransition showProgressDelay =
+            new javafx.animation.PauseTransition(javafx.util.Duration.millis(350));
+    private final javafx.animation.PauseTransition loadingDelay =
+            new javafx.animation.PauseTransition(javafx.util.Duration.millis(700));
+    private volatile Process currentProcess;
+    private volatile boolean cancelRequested;
+    private javafx.animation.Timeline autoFetch;
+    private javafx.animation.PauseTransition firstFetch;
     private boolean refreshing;
     private boolean refreshPending;
     private boolean pendingForce;
@@ -140,7 +154,11 @@ public final class RepositoryView extends BorderPane {
         content.getChildren().addAll(history, changes, stashDetails);
         buildBanner();
         buildUndoBar();
-        VBox main = new VBox(banner, undoBar, content);
+        topProgress.getStyleClass().add("top-progress");
+        topProgress.setMaxWidth(Double.MAX_VALUE);
+        topProgress.setVisible(false);
+        topProgress.setManaged(false);
+        VBox main = new VBox(topProgress, banner, undoBar, content);
         VBox.setVgrow(content, Priority.ALWAYS);
 
         SplitPane split = new SplitPane(sidebar, main);
@@ -152,6 +170,7 @@ public final class RepositoryView extends BorderPane {
         showView(history);
         sidebar.selectAllCommits();
         refresh(true);
+        restartAutoFetch();
     }
 
     // ------------------------------------------------------------------ layout
@@ -309,7 +328,26 @@ public final class RepositoryView extends BorderPane {
         Button term = Ui.smallButton("Terminal", Icons.TERMINAL, () -> Ui.openTerminal(repo.root()));
         term.getStyleClass().add("status-button");
         statusText.setOnMouseClicked(e -> showCommandLog());
-        HBox bar = new HBox(8, spinner, statusText, Ui.spacer(), path, log, term);
+        statusText.setMinWidth(0);
+        opProgress.getStyleClass().add("status-progress");
+        opProgress.setPrefWidth(160);
+        opProgress.setMinWidth(Region.USE_PREF_SIZE);
+        cancelButton.getStyleClass().add("status-button");
+        cancelButton.setTooltip(new javafx.scene.control.Tooltip("Stop this network operation"));
+        showProgressDelay.setOnFinished(e -> {
+            if (busy > 0) {
+                showProgress(true);
+            }
+        });
+        loadingDelay.setOnFinished(e -> {
+            if (refreshing && busy == 0) {
+                topProgress.setProgress(javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS);
+                topProgress.setVisible(true);
+                topProgress.setManaged(true);
+            }
+        });
+        showProgress(false);
+        HBox bar = new HBox(8, spinner, opProgress, statusText, cancelButton, Ui.spacer(), path, log, term);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("status-bar");
         return bar;
@@ -424,12 +462,25 @@ public final class RepositoryView extends BorderPane {
 
     /** Runs a modifying git operation (serialised per repository) and refreshes afterwards. */
     public void run(String title, GitOp op, Runnable onSuccess) {
+        run(title, op, onSuccess, false);
+    }
+
+    /**
+     * @param cancellable offer a Cancel button (only for network operations, where stopping git is safe)
+     */
+    public void run(String title, GitOp op, Runnable onSuccess, boolean cancellable) {
         hideUndoBar();
         setBusy(+1);
         status(title + "…");
+        opProgress.setProgress(javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS);
+        topProgress.setProgress(javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS);
+        cancelButton.setUserData(cancellable);
+        showProgressDelay.playFromStart();
         writer.submit(() -> {
+            cancelRequested = false;
+            Git.onProcessStart(p -> currentProcess = p);
             try {
-                op.run(line -> Platform.runLater(() -> statusText.setText(title + ": " + line)));
+                op.run(line -> Platform.runLater(() -> progressLine(title, line)));
                 Platform.runLater(() -> {
                     setBusy(-1);
                     status(title + " — done");
@@ -439,6 +490,14 @@ public final class RepositoryView extends BorderPane {
                     refresh(false);
                 });
             } catch (Exception ex) {
+                if (cancelRequested) {
+                    Platform.runLater(() -> {
+                        setBusy(-1);
+                        status(title + " cancelled");
+                        refresh(false);
+                    });
+                    return;
+                }
                 Repo.State after;
                 try {
                     after = repo.state();
@@ -463,13 +522,49 @@ public final class RepositoryView extends BorderPane {
                         Dialogs.error(window(), title + " failed", ex.getMessage());
                     }
                 });
+            } finally {
+                Git.onProcessStart(null);
+                currentProcess = null;
             }
         });
     }
 
+    /** Shows a git progress line ("Receiving objects:  45% (450/1000)") in the status bar and progress bars. */
+    private void progressLine(String title, String line) {
+        Progress p = Progress.parse(line);
+        statusText.setText(title + ": " + p.label());
+        double value = p.percent() < 0 ? javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS : p.percent() / 100.0;
+        opProgress.setProgress(value);
+        topProgress.setProgress(value);
+    }
+
+    private void showProgress(boolean show) {
+        opProgress.setVisible(show);
+        opProgress.setManaged(show);
+        topProgress.setVisible(show);
+        topProgress.setManaged(show);
+        boolean cancel = show && Boolean.TRUE.equals(cancelButton.getUserData());
+        cancelButton.setVisible(cancel);
+        cancelButton.setManaged(cancel);
+        spinner.setVisible(busy > 0 && !show);
+    }
+
+    private void cancelOperation() {
+        Process p = currentProcess;
+        if (p != null) {
+            cancelRequested = true;
+            status("Cancelling…");
+            Git.kill(p);
+        }
+    }
+
     private void setBusy(int delta) {
         busy = Math.max(0, busy + delta);
-        spinner.setVisible(busy > 0);
+        if (busy == 0) {
+            showProgressDelay.stop();
+            showProgress(false);
+        }
+        spinner.setVisible(busy > 0 && !opProgress.isVisible());
     }
 
     private static String firstLine(String s) {
@@ -481,7 +576,71 @@ public final class RepositoryView extends BorderPane {
     }
 
     public void dispose() {
+        stopAutoFetch();
         writer.shutdown();
+    }
+
+    // ------------------------------------------------------------------ background fetch
+
+    /** (Re)starts the periodic background fetch according to the preferences. */
+    public void restartAutoFetch() {
+        stopAutoFetch();
+        if (!Boolean.parseBoolean(Settings.get("autoFetch", "true"))) {
+            return;
+        }
+        int minutes = autoFetchMinutes();
+        autoFetch = new javafx.animation.Timeline(new javafx.animation.KeyFrame(
+                javafx.util.Duration.minutes(minutes), e -> backgroundFetch()));
+        autoFetch.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        autoFetch.play();
+        firstFetch = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(5));
+        firstFetch.setOnFinished(e -> backgroundFetch());
+        firstFetch.play();
+    }
+
+    static int autoFetchMinutes() {
+        try {
+            return Math.max(1, Math.min(1440, Integer.parseInt(Settings.get("autoFetch.minutes", "10").strip())));
+        } catch (NumberFormatException e) {
+            return 10;
+        }
+    }
+
+    private void stopAutoFetch() {
+        if (autoFetch != null) {
+            autoFetch.stop();
+            autoFetch = null;
+        }
+        if (firstFetch != null) {
+            firstFetch.stop();
+            firstFetch = null;
+        }
+    }
+
+    /** Quietly fetches all remotes so the ahead / behind counts stay current; never prompts or shows dialogs. */
+    private void backgroundFetch() {
+        if (remotes.isEmpty() || busy > 0 || state != Repo.State.NONE || getScene() == null) {
+            return;
+        }
+        boolean prune = Boolean.parseBoolean(Settings.get("autoFetch.prune", "false"));
+        writer.submit(() -> {
+            try {
+                repo.fetchInBackground(prune);
+                String time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                Platform.runLater(() -> {
+                    if (busy == 0) {
+                        status("Fetched in the background at " + time);
+                    }
+                    refresh(false);
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    if (busy == 0) {
+                        status("Background fetch failed: " + firstLine(ex.getMessage()));
+                    }
+                });
+            }
+        });
     }
 
     public void showCommandLog() {
@@ -1064,6 +1223,7 @@ public final class RepositoryView extends BorderPane {
             return;
         }
         refreshing = true;
+        loadingDelay.playFromStart();
         String oldSignature = logSignature;
         List<String> only = List.copyOf(filterRefs);
         List<String> hide = List.copyOf(hiddenRefs);
@@ -1085,6 +1245,11 @@ public final class RepositoryView extends BorderPane {
 
     private void finishRefresh() {
         refreshing = false;
+        loadingDelay.stop();
+        if (busy == 0) {
+            topProgress.setVisible(false);
+            topProgress.setManaged(false);
+        }
         if (refreshPending) {
             refreshPending = false;
             boolean f = pendingForce;
@@ -1485,7 +1650,7 @@ public final class RepositoryView extends BorderPane {
             String r = remote.getSelectionModel().getSelectedIndex() == 0 ? null : remote.getValue();
             boolean p = prune.isSelected();
             boolean t = tags.isSelected();
-            run("Fetch", pr -> repo.fetch(r, p, t, pr));
+            run("Fetch", pr -> repo.fetch(r, p, t, pr), null, true);
         }
     }
 
@@ -1526,7 +1691,7 @@ public final class RepositoryView extends BorderPane {
             String b = branch.getEditor().getText().isBlank() ? null : branch.getEditor().getText().strip();
             boolean rb = rebase.isSelected();
             boolean as = autostash.isSelected();
-            run("Pull", p -> repo.pull(r, b, rb, as, p));
+            run("Pull", p -> repo.pull(r, b, rb, as, p), null, true);
         }
     }
 
@@ -1586,7 +1751,7 @@ public final class RepositoryView extends BorderPane {
             boolean u = upstream.isSelected();
             boolean fo = force.isSelected();
             boolean t = tags.isSelected();
-            run("Push", p -> repo.push(r, l, rb, u, fo, t, p));
+            run("Push", p -> repo.push(r, l, rb, u, fo, t, p), null, true);
         }
     }
 

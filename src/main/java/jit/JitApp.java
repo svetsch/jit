@@ -190,6 +190,19 @@ public final class JitApp extends Application {
         steps.add(() -> {
             RepositoryView rv = currentRepo();
             if (rv != null) {
+                // simulated network operation reporting progress, to capture the progress UI
+                rv.run("Fetch", p -> {
+                    for (int i = 0; i <= 100; i += 2) {
+                        p.accept("Receiving objects:  " + i + "% (" + i * 12 + "/1200), 3.10 MiB | 2.40 MiB/s");
+                        Thread.sleep(80);
+                    }
+                }, null, true);
+            }
+        });
+        names.add("progress-light");
+        steps.add(() -> {
+            RepositoryView rv = currentRepo();
+            if (rv != null) {
                 rv.showLocalChanges();
             }
         });
@@ -250,7 +263,15 @@ public final class JitApp extends Application {
                 item("Next Tab", "Shortcut+PAGE_DOWN", () -> selectTab(1)),
                 item("Previous Tab", "Shortcut+PAGE_UP", () -> selectTab(-1)),
                 new SeparatorMenuItem(),
-                item("Preferences…", "Shortcut+Comma", () -> PreferencesDialog.show(stage, PreferencesDialog.TAB_GENERAL)),
+                item("Preferences…", "Shortcut+Comma", () -> {
+                    if (PreferencesDialog.show(stage, PreferencesDialog.TAB_GENERAL)) {
+                        for (Tab t : tabs.getTabs()) {
+                            if (t.getUserData() instanceof RepositoryView rv) {
+                                rv.restartAutoFetch();
+                            }
+                        }
+                    }
+                }),
                 new SeparatorMenuItem(),
                 item("Exit", null, () -> {
                     saveState();
@@ -586,7 +607,11 @@ public final class JitApp extends Application {
 
         Thread t = new Thread(() -> {
             try {
-                Repo.clone(u, target, l -> Platform.runLater(() -> line.setText(l)));
+                Repo.clone(u, target, l -> Platform.runLater(() -> {
+                    jit.git.Progress p = jit.git.Progress.parse(l);
+                    line.setText(p.label());
+                    bar.setProgress(p.percent() < 0 ? ProgressBar.INDETERMINATE_PROGRESS : p.percent() / 100.0);
+                }));
                 Platform.runLater(() -> {
                     progress.close();
                     openRepository(target, true);

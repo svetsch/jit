@@ -908,6 +908,20 @@ public final class Repo {
         git.execProgress(progress, args);
     }
 
+    /**
+     * Fetches all remotes without user interaction (no credential prompts), for the periodic background fetch.
+     */
+    public void fetchInBackground(boolean prune) throws GitException {
+        List<String> args = new ArrayList<>(List.of("fetch", "--all", "--quiet"));
+        if (prune) {
+            args.add("--prune");
+        }
+        Git.Result r = git.run(null, null, args, Map.of("GCM_INTERACTIVE", "never", "GIT_TERMINAL_PROMPT", "0"));
+        if (!r.ok()) {
+            throw new GitException(r.err().strip(), args);
+        }
+    }
+
     public void pull(String remote, String branch, boolean rebase, boolean autostash, Consumer<String> progress)
             throws GitException {
         List<String> args = new ArrayList<>(List.of("pull", "--progress", rebase ? "--rebase" : "--no-rebase"));

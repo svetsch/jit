@@ -6,11 +6,13 @@
 
     <groupId>jit</groupId>
     <artifactId>jit</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <!-- override with -Drevision=1.2.3 (the release workflow uses the tag) -->
+    <version>${revision}</version>
     <name>Jit</name>
     <description>A fast and friendly Git client written in JavaFX</description>
 
     <properties>
+        <revision>1.0.0-SNAPSHOT</revision>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.12</javafx.version>

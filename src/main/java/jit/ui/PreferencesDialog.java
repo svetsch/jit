@@ -8,6 +8,7 @@ import java.util.Map;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -62,6 +63,15 @@ public final class PreferencesDialog {
         Runnable checkGit = () -> gitVersion.setText("Detected: " + gitVersion(gitExe.getText()));
         gitExe.textProperty().addListener((obs, o, n) -> checkGit.run());
         checkGit.run();
+        CheckBox autoFetch = general.check("Fetch remotes automatically in the background",
+                Boolean.parseBoolean(Settings.get("autoFetch", "true")));
+        TextField fetchMinutes = general.text("Every (minutes)", Integer.toString(RepositoryView.autoFetchMinutes()));
+        fetchMinutes.disableProperty().bind(autoFetch.selectedProperty().not());
+        CheckBox fetchPrune = general.check("Prune deleted remote branches when fetching in the background",
+                Boolean.parseBoolean(Settings.get("autoFetch.prune", "false")));
+        fetchPrune.disableProperty().bind(autoFetch.selectedProperty().not());
+        general.note("Keeps the ahead / behind counts on Pull and Push current. Runs quietly and never asks for "
+                + "credentials; a fetch that needs a password simply waits for your next manual fetch.");
 
         // Git config ------------------------------------------------------------
         GitConfigPane gitPane;
@@ -159,6 +169,9 @@ public final class PreferencesDialog {
             }
             String exe = gitExe.getText().strip();
             Settings.put("gitExecutable", exe);
+            Settings.put("autoFetch", Boolean.toString(autoFetch.isSelected()));
+            Settings.put("autoFetch.minutes", fetchMinutes.getText().strip());
+            Settings.put("autoFetch.prune", Boolean.toString(fetchPrune.isSelected()));
             Git.setExecutable(exe.isEmpty() ? "git" : exe);
             String tool = preset.getValue();
             if (tool == null || tool.equals("None")) {

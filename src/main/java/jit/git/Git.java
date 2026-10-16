@@ -15,11 +15,28 @@ import java.util.function.Consumer;
 /** Thin wrapper around the git command line executable. */
 public final class Git {
     private static volatile String executable = "git";
+    /** Receives every git process started on the current thread (used to cancel long operations). */
+    private static final ThreadLocal<Consumer<Process>> PROCESS_HOOK = new ThreadLocal<>();
 
     private final File dir;
 
     public Git(File dir) {
         this.dir = dir;
+    }
+
+    /** Registers (or with {@code null} removes) the process hook for git calls made on this thread. */
+    public static void onProcessStart(Consumer<Process> hook) {
+        if (hook == null) {
+            PROCESS_HOOK.remove();
+        } else {
+            PROCESS_HOOK.set(hook);
+        }
+    }
+
+    /** Stops a git process and the helpers it started (remote helpers, ssh …). */
+    public static void kill(Process process) {
+        process.descendants().forEach(ProcessHandle::destroy);
+        process.destroy();
     }
 
     public static void setExecutable(String exe) {
@@ -65,6 +82,10 @@ public final class Git {
         Process process;
         try {
             process = pb.start();
+            Consumer<Process> hook = PROCESS_HOOK.get();
+            if (hook != null) {
+                hook.accept(process);
+            }
         } catch (IOException e) {
             CommandLog.record(dir, args, -1, 0, stdin, "Unable to start git: " + e.getMessage(), 0);
             throw new GitException("Unable to start git: " + e.getMessage(), cmd);
@@ -148,6 +169,10 @@ public final class Git {
         long started = System.nanoTime();
         try {
             Process p = pb.start();
+            Consumer<Process> hook = PROCESS_HOOK.get();
+            if (hook != null) {
+                hook.accept(p);
+            }
             String err = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             int code = p.waitFor();
             List<String> logged = new ArrayList<>(args);

@@ -104,6 +104,27 @@ Builds an `.msi` installer instead (per-user install, Start menu and desktop sho
 `-Djpackage.type=exe` for a setup `.exe`. Installers need the [WiX Toolset 3.x](https://github.com/wixtoolset/wix3/releases)
 on the `PATH`. Set `-Dnative.version=1.2.3` for the version shown by the installer.
 
+### Continuous integration and releases
+
+`.github/workflows/build.yml` builds, tests and packages Jit on Windows (x64), Linux (x64) and macOS (Apple
+Silicon) for every push and pull request; the packages are attached to the workflow run as artifacts
+(`Jit-<version>-windows-x64.zip`, `…-linux-x64.tar.gz`, `…-macos-arm64.zip`).
+
+To publish a release, push a tag:
+
+```bash
+git tag v1.0.0
+```
+
+```bash
+git push origin v1.0.0
+```
+
+The tag sets the version (`-Drevision`, shown in *Help → About*), and the packages — plus a Windows `.msi`
+installer when the runner's WiX Toolset is available — are published as a GitHub release with generated notes.
+Tags with a suffix such as `v1.1.0-beta.1` become pre-releases. The builds are not code-signed, so Windows
+SmartScreen and macOS Gatekeeper warn on first start (on macOS: right-click → *Open*).
+
 ## Settings storage
 
 *Preferences → Storage* chooses where Jit's own settings (open and recent repositories, window, theme, diff tool,

@@ -1073,3 +1073,44 @@
     -fx-min-height: 15;
     -fx-alignment: center;
 }
+
+/* ---------------------------------------------------------------- operation progress */
+
+.top-progress {
+    -fx-pref-height: 3;
+    -fx-min-height: 3;
+    -fx-max-height: 3;
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+}
+
+.top-progress > .track {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+}
+
+.top-progress > .bar {
+    -fx-background-color: -jit-accent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 1.5;
+}
+
+.status-progress {
+    -fx-pref-height: 12;
+    -fx-max-height: 12;
+}
+
+.status-progress > .track {
+    -fx-background-color: -jit-hover-strong;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6;
+}
+
+.status-progress > .bar {
+    -fx-background-color: -jit-accent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6;
+    -fx-padding: 0.5em;
+}

@@ -428,6 +428,46 @@ class RepoTest {
     }
 
     @Test
+    void backgroundFetchUpdatesBehindCount(@TempDir Path remoteDir, @TempDir Path otherDir) throws Exception {
+        new Git(remoteDir.toFile()).exec("init", "--bare", "-q");
+        write("f.txt", "one\n");
+        commitAll("base");
+        String branch = repo.headBranch();
+        repo.addRemote("origin", remoteDir.toString());
+        repo.push("origin", branch, branch, true, false, false, null);
+
+        // someone else pushes a commit
+        Path clone = otherDir.resolve("clone");
+        Repo.clone(remoteDir.toString(), clone, null);
+        Repo other = new Repo(clone);
+        other.git().exec("config", "user.name", "Other");
+        other.git().exec("config", "user.email", "other@example.com");
+        Files.writeString(clone.resolve("g.txt"), "two\n");
+        other.stage(other.status());
+        other.commit("from elsewhere", false);
+        other.git().exec("push", "-q", "origin", "HEAD");
+
+        assertEquals(0, repo.refs().stream().filter(r -> r.head).findFirst().orElseThrow().behind);
+        repo.fetchInBackground(true);
+        assertEquals(1, repo.refs().stream().filter(r -> r.head).findFirst().orElseThrow().behind);
+    }
+
+    @Test
+    void processHookSeesEveryGitProcess() throws Exception {
+        List<Process> started = new java.util.ArrayList<>();
+        Git.onProcessStart(started::add);
+        try {
+            repo.status();
+            repo.headBranch();
+        } finally {
+            Git.onProcessStart(null);
+        }
+        assertEquals(2, started.size());
+        repo.status();
+        assertEquals(2, started.size());
+    }
+
+    @Test
     void fileHistoryFollowsRenames() throws Exception {
         write("a.txt", "content that is long enough to be detected as rename\n");
         commitAll("add a");
