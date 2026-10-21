@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 import javafx.application.Platform;
@@ -44,6 +45,7 @@ import javafx.stage.Window;
 
 import jit.git.Commit;
 import jit.git.Git;
+import jit.git.GitException;
 import jit.git.Progress;
 import jit.git.FileChange;
 import jit.git.Ref;
@@ -70,7 +72,7 @@ public final class RepositoryView extends BorderPane {
 
     private record Snapshot(List<Ref> refs, List<Commit> commits, String signature, List<StatusEntry> status,
                             List<Stash> stashes, Map<String, String> remotes, String headBranch, String headHash,
-                            Repo.State state, String preparedMessage) {
+                            Repo.State state, String preparedMessage, String stashStamp, String configStamp) {
     }
 
     private final Repo repo;
@@ -115,10 +117,21 @@ public final class RepositoryView extends BorderPane {
     private volatile boolean cancelRequested;
     private javafx.animation.Timeline autoFetch;
     private javafx.animation.PauseTransition firstFetch;
+    private javafx.animation.PauseTransition retryFetch;
+    private final ExecutorService background = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "git-background");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
+    private volatile Future<?> backgroundTask;
+    private volatile Process backgroundProcess;
     private boolean refreshing;
     private boolean refreshPending;
     private boolean pendingForce;
     private String renderedKey;
+    private String renderedSidebarKey;
+    private Snapshot lastSnapshot;
 
     private List<Ref> refs = List.of();
     private List<Commit> logCommits = List.of();
@@ -465,21 +478,34 @@ public final class RepositoryView extends BorderPane {
         run(title, op, onSuccess, false);
     }
 
+    /** Runs a network operation: it can be cancelled and waits for a running background fetch. */
+    public void runNetwork(String title, GitOp op) {
+        run(title, op, null, true);
+    }
+
+    public void runNetwork(String title, GitOp op, Runnable onSuccess) {
+        run(title, op, onSuccess, true);
+    }
+
     /**
-     * @param cancellable offer a Cancel button (only for network operations, where stopping git is safe)
+     * @param network a network operation: offer a Cancel button (stopping git is safe there) and let a running
+     *                background fetch finish first, as both update the remote-tracking branches
      */
-    public void run(String title, GitOp op, Runnable onSuccess, boolean cancellable) {
+    public void run(String title, GitOp op, Runnable onSuccess, boolean network) {
         hideUndoBar();
         setBusy(+1);
         status(title + "…");
         opProgress.setProgress(javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS);
         topProgress.setProgress(javafx.scene.control.ProgressBar.INDETERMINATE_PROGRESS);
-        cancelButton.setUserData(cancellable);
+        cancelButton.setUserData(network);
         showProgressDelay.playFromStart();
         writer.submit(() -> {
             cancelRequested = false;
             Git.onProcessStart(p -> currentProcess = p);
             try {
+                if (network) {
+                    awaitBackgroundFetch(title);
+                }
                 op.run(line -> Platform.runLater(() -> progressLine(title, line)));
                 Platform.runLater(() -> {
                     setBusy(-1);
@@ -578,6 +604,7 @@ public final class RepositoryView extends BorderPane {
     public void dispose() {
         stopAutoFetch();
         writer.shutdown();
+        background.shutdown();
     }
 
     // ------------------------------------------------------------------ background fetch
@@ -596,6 +623,8 @@ public final class RepositoryView extends BorderPane {
         firstFetch = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(5));
         firstFetch.setOnFinished(e -> backgroundFetch());
         firstFetch.play();
+        retryFetch = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(30));
+        retryFetch.setOnFinished(e -> backgroundFetch());
     }
 
     static int autoFetchMinutes() {
@@ -615,23 +644,46 @@ public final class RepositoryView extends BorderPane {
             firstFetch.stop();
             firstFetch = null;
         }
+        if (retryFetch != null) {
+            retryFetch.stop();
+            retryFetch = null;
+        }
     }
 
-    /** Quietly fetches all remotes so the ahead / behind counts stay current; never prompts or shows dialogs. */
+    /**
+     * Quietly fetches all remotes so the ahead / behind counts stay current; never prompts or shows dialogs.
+     * It runs at low priority beside the operation queue: it waits while an operation runs, and only the
+     * network operations wait for it.
+     */
     private void backgroundFetch() {
-        if (remotes.isEmpty() || busy > 0 || state != Repo.State.NONE || getScene() == null) {
+        if (remotes.isEmpty() || state != Repo.State.NONE || getScene() == null) {
+            return;
+        }
+        Future<?> running = backgroundTask;
+        if (running != null && !running.isDone()) {
+            return;
+        }
+        if (busy > 0) {
+            if (retryFetch != null) {
+                retryFetch.playFromStart();
+            }
             return;
         }
         boolean prune = Boolean.parseBoolean(Settings.get("autoFetch.prune", "false"));
-        writer.submit(() -> {
+        backgroundTask = background.submit(() -> {
+            Git.onProcessStart(p -> backgroundProcess = p);
             try {
                 repo.fetchInBackground(prune);
+                List<Ref> after = repo.refs();
                 String time = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
                 Platform.runLater(() -> {
                     if (busy == 0) {
                         status("Fetched in the background at " + time);
                     }
-                    refresh(false);
+                    // most fetches bring nothing new: only then is the repository read again
+                    if (!refsKey(after).equals(refsKey(refs))) {
+                        refresh(false);
+                    }
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
@@ -639,8 +691,29 @@ public final class RepositoryView extends BorderPane {
                         status("Background fetch failed: " + firstLine(ex.getMessage()));
                     }
                 });
+            } finally {
+                Git.onProcessStart(null);
+                backgroundProcess = null;
             }
         });
+    }
+
+    /** Called on the operation thread: lets a running background fetch finish (Cancel stops it). */
+    private void awaitBackgroundFetch(String title) throws Exception {
+        Future<?> running = backgroundTask;
+        if (running == null || running.isDone()) {
+            return;
+        }
+        Platform.runLater(() -> status(title + ": waiting for the background fetch…"));
+        currentProcess = backgroundProcess;
+        try {
+            running.get();
+        } catch (java.util.concurrent.ExecutionException ignored) {
+            // the background fetch reports its own failure
+        }
+        if (cancelRequested) {
+            throw new GitException("Cancelled", List.of());
+        }
     }
 
     public void showCommandLog() {
@@ -649,6 +722,7 @@ public final class RepositoryView extends BorderPane {
 
     public void showRepositorySettings() {
         PreferencesDialog.showRepositorySettings(window(), repo);
+        refresh(false);
     }
 
     // ------------------------------------------------------------------ interactive rebase
@@ -960,7 +1034,7 @@ public final class RepositoryView extends BorderPane {
             String remote = head.upstream.substring(0, head.upstream.indexOf('/'));
             String target = remoteBranchName(headBranch);
             String branch = headBranch;
-            run("Push " + branch, p -> repo.push(remote, branch, target, false, false, false, p));
+            runNetwork("Push " + branch, p -> repo.push(remote, branch, target, false, false, false, p));
         } else {
             push(headBranch);
         }
@@ -1033,7 +1107,7 @@ public final class RepositoryView extends BorderPane {
         String t = typed == null || typed.isBlank() ? null : typed.strip();
         String url = h.newPullRequestUrl(source, t);
         if (push.isSelected()) {
-            run("Push " + localBranch, p -> repo.push(remote, localBranch, source, !pushed, false, false, p),
+            runNetwork("Push " + localBranch, p -> repo.push(remote, localBranch, source, !pushed, false, false, p),
                     () -> Ui.openUrl(url));
         } else {
             Ui.openUrl(url);
@@ -1216,6 +1290,16 @@ public final class RepositoryView extends BorderPane {
         refresh(false);
     }
 
+    /**
+     * Refresh when the window gets the focus back (files may have been edited elsewhere). A running operation
+     * refreshes when it finishes anyway, so there is no need to read the repository twice.
+     */
+    public void refreshOnFocus() {
+        if (busy == 0) {
+            refresh(false);
+        }
+    }
+
     public void refresh(boolean forceLog) {
         if (refreshing) {
             refreshPending = true;
@@ -1225,11 +1309,12 @@ public final class RepositoryView extends BorderPane {
         refreshing = true;
         loadingDelay.playFromStart();
         String oldSignature = logSignature;
+        Snapshot old = lastSnapshot;
         List<String> only = List.copyOf(filterRefs);
         List<String> hide = List.copyOf(hiddenRefs);
         READERS.submit(() -> {
             try {
-                Snapshot s = load(oldSignature, forceLog, only, hide);
+                Snapshot s = load(old, oldSignature, forceLog, only, hide);
                 Platform.runLater(() -> {
                     apply(s);
                     finishRefresh();
@@ -1258,11 +1343,12 @@ public final class RepositoryView extends BorderPane {
         }
     }
 
-    private Snapshot load(String oldSignature, boolean force, List<String> only, List<String> hide)
+    private Snapshot load(Snapshot old, String oldSignature, boolean force, List<String> only, List<String> hide)
             throws Exception {
         List<Ref> r = repo.refs();
-        String hb = repo.headBranch();
-        String hh = repo.headHash();
+        Repo.WorkingState ws = repo.workingState();
+        String hb = ws.headBranch();
+        String hh = ws.headHash();
         // ignore filters on refs that no longer exist (deleted branches)
         Set<String> existing = new HashSet<>();
         for (Ref ref : r) {
@@ -1280,15 +1366,20 @@ public final class RepositoryView extends BorderPane {
         if (force || !signature.equals(oldSignature)) {
             commits = repo.log(MAX_COMMITS, onlyExisting, hideExisting);
         }
-        List<StatusEntry> st = repo.status();
-        List<Stash> sl = repo.stashes();
-        Map<String, String> rm = repo.remotes();
+        // stashes and remotes rarely change: read them again only when their files did (or on F5)
+        String stashStamp = repo.stashStamp();
+        String configStamp = repo.configStamp();
+        List<Stash> sl = !force && old != null && stashStamp.equals(old.stashStamp()) ? old.stashes() : repo.stashes();
+        Map<String, String> rm = !force && old != null && configStamp.equals(old.configStamp())
+                ? old.remotes() : repo.remotes();
         Repo.State state = repo.state();
         String prepared = state != Repo.State.NONE ? repo.preparedMessage() : null;
-        return new Snapshot(r, commits, signature, st, sl, rm, hb, hh, state, prepared);
+        return new Snapshot(r, commits, signature, ws.entries(), sl, rm, hb, hh, state, prepared, stashStamp,
+                configStamp);
     }
 
     private void apply(Snapshot s) {
+        lastSnapshot = s;
         refs = s.refs();
         headBranch = s.headBranch();
         headHash = s.headHash();
@@ -1306,8 +1397,13 @@ public final class RepositoryView extends BorderPane {
             renderedKey = key;
             rebuildHistory();
         }
-        sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
-        sidebar.update(refs, remotes, stashes, status.size());
+        // rebuilding the sidebar tree is costly; skip it when nothing it shows has changed
+        String sidebarKey = refsKey(refs) + "#" + remotes + "#" + stashes + "#" + status.size();
+        if (!sidebarKey.equals(renderedSidebarKey)) {
+            renderedSidebarKey = sidebarKey;
+            sidebar.setBranchStates(pinnedRefs, filterRefs, hiddenRefs);
+            sidebar.update(refs, remotes, stashes, status.size());
+        }
         updateScope();
         changes.setStatus(status, state, s.preparedMessage());
 
@@ -1329,6 +1425,17 @@ public final class RepositoryView extends BorderPane {
             history.selectFirstCommit();
             status(logCommits.size() + " commits loaded");
         }
+    }
+
+    /** Everything shown about the refs (targets, tracking state), to tell whether they changed. */
+    private static String refsKey(List<Ref> list) {
+        StringBuilder sb = new StringBuilder();
+        for (Ref r : list) {
+            sb.append(r.fullName).append('=').append(r.target).append(',').append(r.upstream).append(',')
+                    .append(r.ahead).append(',').append(r.behind).append(',').append(r.upstreamGone)
+                    .append(r.head ? ",*" : "").append(';');
+        }
+        return sb.toString();
     }
 
     private void rebuildHistory() {
@@ -1409,7 +1516,8 @@ public final class RepositoryView extends BorderPane {
                 case "sec:branches" -> new ContextMenu(Ui.item("New Branch…", Icons.PLUS,
                         () -> createBranch("HEAD", headBranch == null ? "HEAD" : headBranch)));
                 case "sec:remotes" -> new ContextMenu(Ui.item("Add Remote…", Icons.PLUS, this::addRemote),
-                        Ui.item("Fetch All", Icons.FETCH, () -> run("Fetch", p -> repo.fetch(null, true, false, p))));
+                        Ui.item("Fetch All", Icons.FETCH,
+                                () -> runNetwork("Fetch", p -> repo.fetch(null, true, false, p))));
                 case "sec:stashes" -> new ContextMenu(Ui.item("Stash Changes…", Icons.STASH, this::stash));
                 default -> null;
             };
@@ -1513,7 +1621,7 @@ public final class RepositoryView extends BorderPane {
     private ContextMenu remoteMenu(String remote) {
         ContextMenu m = new ContextMenu(
                 Ui.item("Fetch '" + remote + "'", Icons.FETCH,
-                        () -> run("Fetch " + remote, p -> repo.fetch(remote, true, false, p))),
+                        () -> runNetwork("Fetch " + remote, p -> repo.fetch(remote, true, false, p))),
                 new SeparatorMenuItem(),
                 Ui.item("Edit URL…", Icons.EDIT, () -> editRemote(remote)),
                 Ui.item("Remove Remote…", Icons.CLOSE, () -> removeRemote(remote)),
@@ -1974,7 +2082,7 @@ public final class RepositoryView extends BorderPane {
     private void deleteRemoteBranch(Ref r) {
         if (Dialogs.confirm(window(), "Delete Remote Branch", "Delete branch '" + r.remoteBranch() + "' from remote '"
                 + r.remote() + "'? This affects everyone using the remote.", "Delete")) {
-            run("Delete " + r.name, p -> repo.deleteRemoteBranch(r, p));
+            runNetwork("Delete " + r.name, p -> repo.deleteRemoteBranch(r, p));
         }
     }
 
@@ -2016,7 +2124,7 @@ public final class RepositoryView extends BorderPane {
                 name.textProperty().isNotEmpty().and(url.textProperty().isNotEmpty()))) {
             String n = name.getText().strip();
             String u = url.getText().strip();
-            run("Add remote " + n, p -> {
+            runNetwork("Add remote " + n, p -> {
                 repo.addRemote(n, u);
                 repo.fetch(n, false, false, p);
             });

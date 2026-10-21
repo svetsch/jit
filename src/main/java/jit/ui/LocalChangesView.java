@@ -49,6 +49,7 @@ public final class LocalChangesView extends SplitPane {
     private final BooleanProperty treeMode = FileTree.treeModeSetting("changes.tree");
     private final Label unstagedTitle = Ui.label("Unstaged Changes", "pane-header-text");
     private final Label stagedTitle = Ui.label("Staged Changes", "pane-header-text");
+    private final Button stageSelection;
     private final Button stageAll;
     private final Button unstageAll;
     private final TextField subject = new TextField();
@@ -69,12 +70,16 @@ public final class LocalChangesView extends SplitPane {
     private List<StatusEntry> entries = List.of();
     private Repo.State state = Repo.State.NONE;
     private boolean selecting;
+    private boolean diffStale;
 
     public LocalChangesView(RepositoryView rv) {
         this.rv = rv;
         getStyleClass().add("local-changes");
         setOrientation(Orientation.VERTICAL);
 
+        stageSelection = Ui.smallButton("Stage Selection", Icons.CHECK, () -> stage(unstaged.selectedEntries()));
+        stageSelection.setTooltip(new Tooltip("Stage the selected files (Enter)"));
+        stageSelection.setDisable(true);
         stageAll = Ui.smallButton("Stage All", Icons.PLUS, () -> stage(unstaged.entries()));
         unstageAll = Ui.smallButton("Unstage All", Icons.MINUS, () -> unstage(staged.entries()));
 
@@ -87,8 +92,8 @@ public final class LocalChangesView extends SplitPane {
             staged.setTreeMode(n);
         });
 
-        VBox unstagedBox = pane(unstagedTitle, stageAll, unstaged);
-        VBox stagedBox = pane(stagedTitle, unstageAll, staged);
+        VBox unstagedBox = pane(unstagedTitle, unstaged, stageSelection, stageAll);
+        VBox stagedBox = pane(stagedTitle, staged, unstageAll);
         SplitPane lists = new SplitPane(unstagedBox, stagedBox);
         lists.setOrientation(Orientation.VERTICAL);
         lists.setDividerPositions(0.55);
@@ -104,6 +109,12 @@ public final class LocalChangesView extends SplitPane {
 
         diff.setPatchHandler((patch, cached, reverse, what) ->
                 rv.run(what, p -> rv.repo().applyPatch(patch, cached, reverse)));
+        // the diff is only loaded while this view is shown; catch up when it appears
+        visibleProperty().addListener((obs, o, visible) -> {
+            if (visible && diffStale) {
+                showDiff();
+            }
+        });
     }
 
     private VBox buildCommitBox() {
@@ -166,9 +177,10 @@ public final class LocalChangesView extends SplitPane {
         return commitBox;
     }
 
-    private VBox pane(Label title, Button action, FileTree<StatusEntry> tree) {
+    private VBox pane(Label title, FileTree<StatusEntry> tree, Button... actions) {
         ToggleButton layout = FileTree.layoutToggle(treeMode);
-        HBox header = new HBox(8, title, Ui.spacer(), layout, action);
+        HBox header = new HBox(8, title, Ui.spacer(), layout);
+        header.getChildren().addAll(actions);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("pane-header");
         StackPane body = new StackPane(tree, tree.placeholder());
@@ -180,6 +192,7 @@ public final class LocalChangesView extends SplitPane {
     private void setupTree(FileTree<StatusEntry> tree, boolean isUnstaged) {
         tree.getSelectionModel().getSelectedItems().addListener(
                 (javafx.collections.ListChangeListener<Object>) c -> {
+                    stageSelection.setDisable(!unstaged.hasSelection());
                     if (selecting) {
                         return;
                     }
@@ -267,11 +280,17 @@ public final class LocalChangesView extends SplitPane {
         }
         selecting = true;
         try {
-            unstaged.setEntries(u);
-            staged.setEntries(s);
+            // rebuilding an unchanged tree costs time and flickers; most refreshes change nothing here
+            if (!u.equals(unstaged.entries())) {
+                unstaged.setEntries(u);
+            }
+            if (!s.equals(staged.entries())) {
+                staged.setEntries(s);
+            }
         } finally {
             selecting = false;
         }
+        stageSelection.setDisable(!unstaged.hasSelection());
         unstagedTitle.setText("Unstaged Changes  (" + u.size() + ")");
         stagedTitle.setText("Staged Changes  (" + s.size() + ")");
         stageAll.setDisable(u.isEmpty());
@@ -290,10 +309,16 @@ public final class LocalChangesView extends SplitPane {
             setMessage(preparedMessage);
         }
         updateCommitButton();
-        showDiff();
+        // the file may have changed even when its status did not, so reload the diff, but only when it is seen
+        if (isVisible()) {
+            showDiff();
+        } else {
+            diffStale = true;
+        }
     }
 
     private void showDiff() {
+        diffStale = false;
         StatusEntry u = unstaged.singleEntry();
         StatusEntry s = staged.singleEntry();
         StatusEntry e = u != null ? u : s;
@@ -409,7 +434,32 @@ public final class LocalChangesView extends SplitPane {
             }, afterCommit());
             return;
         }
+        if (amending && nothingStaged && !opts.resetAuthor()) {
+            rv.read(() -> rv.repo().lastCommitMessage(), last -> {
+                if (amendChangesNothing(last, full, opts) && !Dialogs.confirm(rv.window(), "Nothing to amend",
+                        "No changes are staged and the message is the same as the last commit's, so amending "
+                                + "would only change its date and hash."
+                                + (entries.isEmpty() ? "" : " Stage the changes you want to add to the commit first."),
+                        "Amend Anyway")) {
+                    return;
+                }
+                rv.run("Amend commit", p -> rv.repo().commit(full, opts), afterCommit());
+            });
+            return;
+        }
         rv.run(amending ? "Amend commit" : "Commit", p -> rv.repo().commit(full, opts), afterCommit());
+    }
+
+    /** Whether amending with nothing staged would leave the last commit's message as it is. */
+    private static boolean amendChangesNothing(String last, String message, Repo.CommitOptions opts) {
+        if (opts.signoff() && !last.contains("Signed-off-by: ")) {
+            return false;
+        }
+        return opts.keepMessage() || normalized(last).equals(normalized(message));
+    }
+
+    private static String normalized(String message) {
+        return message.strip().replaceAll("\\s+", " ");
     }
 
     private void stage(List<StatusEntry> list) {

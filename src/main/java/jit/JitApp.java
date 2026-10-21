@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -35,7 +36,10 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.PopupWindow;
 import javafx.stage.StageStyle;
+import javafx.stage.Window;
+import javafx.stage.WindowEvent;
 
 import jit.git.Git;
 import jit.git.GitException;
@@ -57,6 +61,7 @@ public final class JitApp extends Application {
     private Stage stage;
     private Scene scene;
     private final TabPane tabs = new TabPane();
+    private long ownWindowLeftAt;
 
     public static void main(String[] args) {
         launch(args);
@@ -129,10 +134,26 @@ public final class JitApp extends Application {
                 rv.refresh();
             }
         });
+        // remember when one of our own dialogs / windows was left, so returning from it does not re-read the repository
+        Window.getWindows().addListener((ListChangeListener<Window>) c -> {
+            while (c.next()) {
+                for (Window w : c.getAddedSubList()) {
+                    if (w != stage && !(w instanceof PopupWindow)) {
+                        w.focusedProperty().addListener((obs, was, now) -> {
+                            if (!now) {
+                                ownWindowLeftAt = System.currentTimeMillis();
+                            }
+                        });
+                        w.addEventHandler(WindowEvent.WINDOW_HIDDEN,
+                                e -> ownWindowLeftAt = System.currentTimeMillis());
+                    }
+                }
+            }
+        });
         stage.focusedProperty().addListener((obs, o, focused) -> {
             RepositoryView rv = currentRepo();
-            if (focused && rv != null) {
-                rv.refresh();
+            if (focused && rv != null && System.currentTimeMillis() - ownWindowLeftAt > 1000) {
+                rv.refreshOnFocus();
             }
         });
         stage.setOnCloseRequest(e -> saveState());

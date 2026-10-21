@@ -334,8 +334,40 @@ class RepoTest {
         CommandLog.Entry e = entries.get(entries.size() - 1);
         assertEquals("status", e.subcommand());
         assertTrue(e.isQuery());
-        assertTrue(e.commandLine().startsWith("git status --porcelain=v1"));
+        assertTrue(e.commandLine().startsWith("git status --porcelain=v2"));
         assertEquals(0, e.exitCode());
+    }
+
+    @Test
+    void workingStateReadsHeadAndStatusInOneCall() throws Exception {
+        Repo.WorkingState unborn = repo.workingState();
+        assertNull(unborn.headHash());
+        assertEquals(repo.headBranch(), unborn.headBranch());
+
+        write("a.txt", "a\n");
+        write("m.txt", "m\n");
+        commitAll("base");
+        repo.git().exec("mv", "a.txt", "b c.txt");
+        write("m.txt", "changed\n");
+        write("dir/new file.txt", "x\n");
+
+        CommandLog.clear();
+        Repo.WorkingState ws = repo.workingState();
+        assertEquals(1, CommandLog.entries().size());
+        assertEquals(repo.headBranch(), ws.headBranch());
+        assertEquals(repo.headHash(), ws.headHash());
+        assertEquals(3, ws.entries().size());
+        StatusEntry renamed = ws.entries().stream().filter(x -> x.path().equals("b c.txt")).findFirst().orElseThrow();
+        assertEquals('R', renamed.x());
+        assertEquals(' ', renamed.y());
+        assertEquals("a.txt", renamed.origPath());
+        StatusEntry modified = ws.entries().stream().filter(x -> x.path().equals("m.txt")).findFirst().orElseThrow();
+        assertEquals(' ', modified.x());
+        assertEquals('M', modified.y());
+        assertTrue(ws.entries().stream().anyMatch(x -> x.path().equals("dir/new file.txt") && x.isUntracked()));
+
+        repo.git().exec("checkout", "-q", "--detach");
+        assertNull(repo.workingState().headBranch());
     }
 
     @Test

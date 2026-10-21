@@ -43,6 +43,7 @@ public final class Repo {
     private final Path root;
     private final Git git;
     private volatile Path gitDir;
+    private volatile Path commonDir;
 
     public Repo(Path root) {
         this.root = root;
@@ -307,25 +308,93 @@ public final class Repo {
     }
 
     public List<StatusEntry> status() throws GitException {
-        String out = git.exec("status", "--porcelain=v1", "-z", "--untracked-files=all");
+        return workingState().entries();
+    }
+
+    /**
+     * Checked-out branch ({@code null} when detached), HEAD commit ({@code null} before the first commit) and the
+     * working tree status.
+     */
+    public record WorkingState(String headBranch, String headHash, List<StatusEntry> entries) {
+    }
+
+    /** HEAD and the working tree status, read with a single {@code git status} call. */
+    public WorkingState workingState() throws GitException {
+        String out = git.exec("status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all");
+        String branch = null;
+        String hash = null;
         List<StatusEntry> entries = new ArrayList<>();
         String[] parts = out.split("\0");
         for (int i = 0; i < parts.length; i++) {
             String p = parts[i];
-            if (p.length() < 4) {
-                continue;
+            if (p.startsWith("# branch.oid ")) {
+                String v = p.substring("# branch.oid ".length()).strip();
+                hash = v.equals("(initial)") ? null : v;
+            } else if (p.startsWith("# branch.head ")) {
+                String v = p.substring("# branch.head ".length()).strip();
+                branch = v.equals("(detached)") ? null : v;
+            } else if (p.startsWith("? ")) {
+                entries.add(new StatusEntry(p.substring(2), null, '?', '?'));
+            } else if (p.startsWith("1 ")) {
+                // 1 XY sub mH mI mW hH hI path
+                entries.add(statusEntry(p.split(" ", 9), null));
+            } else if (p.startsWith("2 ")) {
+                // 2 XY sub mH mI mW hH hI Xscore path, then the original path as the next record
+                String orig = i + 1 < parts.length ? parts[++i] : null;
+                entries.add(statusEntry(p.split(" ", 10), orig));
+            } else if (p.startsWith("u ")) {
+                // u XY sub m1 m2 m3 mW h1 h2 h3 path
+                entries.add(statusEntry(p.split(" ", 11), null));
             }
-            char x = p.charAt(0);
-            char y = p.charAt(1);
-            String path = p.substring(3);
-            String orig = null;
-            if ((x == 'R' || x == 'C') && i + 1 < parts.length) {
-                orig = parts[++i];
-            }
-            entries.add(new StatusEntry(path, orig, x, y));
         }
         entries.sort((a, b) -> a.path().compareToIgnoreCase(b.path()));
-        return entries;
+        return new WorkingState(branch, hash, entries);
+    }
+
+    private static StatusEntry statusEntry(String[] fields, String orig) {
+        String xy = fields[1];
+        char x = xy.charAt(0) == '.' ? ' ' : xy.charAt(0);
+        char y = xy.charAt(1) == '.' ? ' ' : xy.charAt(1);
+        return new StatusEntry(fields[fields.length - 1], orig, x, y);
+    }
+
+    /**
+     * A value that changes whenever the stash list changes (the stash reflog is rewritten by every stash
+     * operation), so the list only needs to be read again when it differs.
+     */
+    public String stashStamp() throws GitException {
+        return fileStamp(commonDir().resolve("logs").resolve("refs").resolve("stash"));
+    }
+
+    /** A value that changes whenever the repository configuration (and so the remotes) changes. */
+    public String configStamp() throws GitException {
+        return fileStamp(commonDir().resolve("config"));
+    }
+
+    private static String fileStamp(Path f) {
+        try {
+            return Files.getLastModifiedTime(f).toMillis() + ":" + Files.size(f);
+        } catch (IOException e) {
+            return "-";
+        }
+    }
+
+    /** The directory shared by all worktrees (config, refs, logs); the git dir itself outside linked worktrees. */
+    public Path commonDir() throws GitException {
+        if (commonDir == null) {
+            Path d = gitDir();
+            Path c = d;
+            Path link = d.resolve("commondir");
+            if (Files.isRegularFile(link)) {
+                try {
+                    c = d.resolve(Files.readString(link, StandardCharsets.UTF_8).strip()).normalize();
+                } catch (IOException ignored) {
+                    // fall back to the git dir
+                }
+            }
+            commonDir = c;
+        }
+        return commonDir;
     }
 
     public List<FileChange> commitChanges(Commit c) throws GitException {
@@ -910,9 +979,11 @@ public final class Repo {
 
     /**
      * Fetches all remotes without user interaction (no credential prompts), for the periodic background fetch.
+     * Automatic garbage collection / maintenance is left for the user's own fetches so this stays light.
      */
     public void fetchInBackground(boolean prune) throws GitException {
-        List<String> args = new ArrayList<>(List.of("fetch", "--all", "--quiet"));
+        List<String> args = new ArrayList<>(List.of("-c", "gc.auto=0", "-c", "maintenance.auto=false",
+                "fetch", "--all", "--quiet", "--no-recurse-submodules"));
         if (prune) {
             args.add("--prune");
         }
