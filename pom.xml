@@ -12,7 +12,7 @@
     <description>A fast and friendly Git client written in JavaFX</description>
 
     <properties>
-        <revision>1.0.0-SNAPSHOT</revision>
+        <revision>1.0.1-SNAPSHOT</revision>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.12</javafx.version>
@@ -21,7 +21,7 @@
         <build.time>${maven.build.timestamp}</build.time>
 
         <!-- native packaging (profile "native"); the version must be numeric for jpackage -->
-        <native.version>1.0.0</native.version>
+        <native.version>1.0.1</native.version>
         <native.dir>${project.build.directory}/native</native.dir>
         <jpackage.type>app-image</jpackage.type>
         <jpackage.extra.args></jpackage.extra.args>
